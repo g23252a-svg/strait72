@@ -7,17 +7,17 @@
 //   state.decks.china  = { deck, hand, discard }
 //   state.decks.taiwan = { deck, hand, discard }
 //
-// 규칙:
-//   - 시작 손패: 4장 (HAND_INIT)
-//   - 매턴 드로우: 2장 (DRAW_PER_TURN)
-//   - 최대 손패: 5장 (HAND_MAX) — 초과 시 가장 오래된 카드부터 discard
+// 규칙 (v0.3.7 tuned):
+//   - 시작 손패: 6장 (HAND_INIT)
+//   - 매턴 드로우: 3장 (DRAW_PER_TURN)
+//   - 최대 손패: 7장 (HAND_MAX) — 초과 시 가장 오래된 카드부터 discard
 //   - 덱 소진 시: discard를 섞어 새 deck으로 복귀
 //   - 카드 사용 후: 자동으로 discard로 이동 (turn_resolver에서 호출)
 // =====================================================================
 
-export const HAND_INIT = 4;
-export const DRAW_PER_TURN = 2;
-export const HAND_MAX = 5;
+export const HAND_INIT = 6;
+export const DRAW_PER_TURN = 3;
+export const HAND_MAX = 7;
 
 function shuffle(arr) {
   const a = [...arr];

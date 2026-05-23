@@ -11,7 +11,7 @@ import { suggestChinaAxis, suggestTaiwanFocus } from "./target_selector.js";
 import { drawGameCanvas, hitTestProvince } from "./ui_canvas.js";
 import { GAME_RULES, BUILD_TAG, BUILD_DATE, BUILD_FULL, TOTAL_GAME_HOURS, formatGameTime, formatTurnCounter, chinaHoursRemaining } from "./game_rules.js";
 import { AXIS_DEFAULT_TARGETS, chooseBestTarget } from "./combat_resolver.js";
-import { initializeDecks } from "./deck_state.js";
+import { initializeDecks, DRAW_PER_TURN } from "./deck_state.js";
 
 const DATA_PATHS = {
   axes: "./data/axes.json",
@@ -33,7 +33,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.3.6";
+const EXPECTED_BUILD = "v0.3.7";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -227,7 +227,7 @@ function renderCardsList(side, cards) {
     ? `<div class="hand-status">손패 ${d.hand.length}장 · 덱 ${d.deck.length}장 · 버림 ${d.discard.length}장</div>`
     : "";
   if (!cards.length) {
-    return status + `<div class="empty-hand">손패가 비었습니다. 다음 턴 시작 시 ${2}장 드로우됩니다.</div>`;
+    return status + `<div class="empty-hand">손패가 비었습니다. 다음 턴 시작 시 ${DRAW_PER_TURN}장 드로우됩니다.</div>`;
   }
   return status + cards.map(cardCheckHtml).join("");
 }
