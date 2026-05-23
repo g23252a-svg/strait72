@@ -9,7 +9,7 @@ import { createInitialState, buildCardIndex, buildAxisIndex } from "./state.js";
 import { runTurn } from "./turn_resolver.js";
 import { suggestChinaAxis, suggestTaiwanFocus } from "./target_selector.js";
 import { drawGameCanvas, hitTestProvince } from "./ui_canvas.js";
-import { GAME_RULES, BUILD_TAG, BUILD_DATE, BUILD_FULL, formatGameTime, formatTurnCounter, chinaHoursRemaining } from "./game_rules.js";
+import { GAME_RULES, BUILD_TAG, BUILD_DATE, BUILD_FULL, TOTAL_GAME_HOURS, formatGameTime, formatTurnCounter, chinaHoursRemaining } from "./game_rules.js";
 import { AXIS_DEFAULT_TARGETS, chooseBestTarget } from "./combat_resolver.js";
 
 const DATA_PATHS = {
@@ -26,12 +26,13 @@ let indices = {};
 let state = null;
 let selectedProvince = "keelung";
 const recentUiPicks = { china: [], taiwan: [] };
+let canvasLoopStarted = false;
 
 window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.3.2";
+const EXPECTED_BUILD = "v0.3.4";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -78,6 +79,7 @@ async function init() {
   await loadData();
   resetGame();
   bindEvents();
+  startCanvasLoop();
 }
 
 function renderBuildBadge() {
@@ -341,8 +343,14 @@ function render() {
   dom.turnCounter.textContent = formatTurnCounter(state.turn);
   dom.gameClock.textContent = formatGameTime(state.turn);
   dom.chinaClock.textContent = `${chinaHoursRemaining(state.turn)}h`;
-  dom.outcomeChip.textContent = state.outcome ? outcomeLabel(state.outcome) : "진행 중";
-  dom.outcomeChip.className = state.outcome?.startsWith("china") ? "chip danger" : state.outcome ? "chip ok" : "chip";
+  dom.outcomeChip.textContent = state.outcome
+    ? outcomeLabel(state.outcome)
+    : (state.persistent?.alliedIntervention?.active ? "동맹 개입 후 교전" : "진행 중");
+  dom.outcomeChip.className = state.outcome?.startsWith("china")
+    ? "chip danger"
+    : state.outcome
+      ? "chip ok"
+      : (state.persistent?.alliedIntervention?.active ? "chip amber" : "chip");
 
   dom.chinaMeters.innerHTML = [
     meter("작전 템포", state.gauges.chinaTempo, "red"),
@@ -369,6 +377,11 @@ function render() {
 
   renderLog();
 
+  drawCanvasOnly();
+}
+
+function drawCanvasOnly() {
+  if (!state || !dom.mapCanvas) return;
   const axis = data.axes.find(a => a.id === dom.chinaAxisSelect.value);
   const focus = data.provinces.find(p => p.id === dom.taiwanFocusSelect.value);
   drawGameCanvas(dom.mapCanvas, state, {
@@ -377,6 +390,20 @@ function render() {
     axisName: axis?.name,
     focusName: focus?.name
   });
+}
+
+function startCanvasLoop() {
+  if (canvasLoopStarted) return;
+  canvasLoopStarted = true;
+  let last = 0;
+  const loop = (ts) => {
+    if (ts - last > 120) {
+      drawCanvasOnly();
+      last = ts;
+    }
+    window.requestAnimationFrame(loop);
+  };
+  window.requestAnimationFrame(loop);
 }
 
 function meter(label, value, color = "blue") {
@@ -454,7 +481,7 @@ function renderTurnBlock(turn, summaries, isCurrent) {
 
   const header = `
     <div class="${headerCls}">
-      <span>T${turn} · ${formatGameTime(Math.min(turn, 20))}</span>
+      <span>T${turn} · ${formatGameTime(turn)}</span>
       ${axisChip}${focusChip}
     </div>
   `;
@@ -534,15 +561,20 @@ function axisName(id) {
   return data.axes.find(a => a.id === id)?.name || id;
 }
 
+function formatSurvivalDuration() {
+  const days = TOTAL_GAME_HOURS / 24;
+  const label = Number.isInteger(days) ? `${days}일` : `${days.toFixed(1)}일`;
+  return `${GAME_RULES.totalTurns}턴 / ${label}`;
+}
+
 function outcomeLabel(id) {
   const labels = {
     china_surrender_win: "중국 승리: 정부 기능 붕괴",
     china_blockade_win: "중국 승리: 봉쇄 성공",
     china_capital_win: "중국 승리: 수도 장악",
     china_capital_pressure_win: "중국 승리: 수도권 압박",
-    taiwan_us_intervention_win: "대만 승리: 미국 개입",
-    taiwan_political_collapse_win: "대만 승리: 중국 정치압박 붕괴",
-    taiwan_survival_win: "대만 승리: 5일 생존"
+        taiwan_political_collapse_win: "대만 승리: 중국 정치압박 붕괴",
+    taiwan_survival_win: state?.persistent?.alliedIntervention?.active ? `대만 승리: 동맹 개입 후 ${formatSurvivalDuration()} 생존` : `대만 승리: ${formatSurvivalDuration()} 생존`
   };
   return labels[id] || id;
 }

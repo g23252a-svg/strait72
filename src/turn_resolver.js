@@ -85,7 +85,7 @@ const EFFECT_HANDLERS = {
     const targets = ctx.resolvedTargets || [];
     for (const provId of targets) {
       const prov = s.provinces[provId];
-      if (!prov) continue;
+      if (!prov || prov.controlStage === "china_control") continue;
       for (let i = 0; i < v; i++) {
         prov.landingStage = advanceLandingStage(prov.landingStage);
       }
@@ -463,6 +463,66 @@ export function phaseOperationResolution(state, cardIndex, axisIndex) {
   return state;
 }
 
+
+function updateAlliedInterventionState(state) {
+  state.persistent.alliedIntervention = state.persistent.alliedIntervention || {
+    active: false,
+    activatedTurn: null,
+    usCombatSupport: false,
+    japanNavalSupport: false,
+    koreaRearSupportActive: false
+  };
+  const allied = state.persistent.alliedIntervention;
+
+  if (state.gauges.usIntervention >= 100 && !allied.active) {
+    allied.active = true;
+    allied.activatedTurn = state.turn;
+    allied.usCombatSupport = true;
+    state.thisTurn.operationLog.push("🇺🇸 미국 개입 개시: 게임은 종료되지 않고 동맹 개입 단계로 전환");
+    state.thisTurn.visualEvents.push({ type: "us_fleet_arrival", turn: state.turn });
+  }
+
+  if (allied.active && state.gauges.japanIntervention >= 70 && !allied.japanNavalSupport) {
+    allied.japanNavalSupport = true;
+    state.thisTurn.operationLog.push("🇯🇵 일본 해상·기지 지원 활성화");
+    state.thisTurn.visualEvents.push({ type: "japan_naval_support", turn: state.turn });
+  }
+
+  if (allied.active && (state.gauges.koreaRearSupport >= 20 || state.gauges.usIntervention >= 100) && !allied.koreaRearSupportActive) {
+    allied.koreaRearSupportActive = true;
+    state.thisTurn.operationLog.push("🇰🇷 한국 후방지원 활성화: 미군 전개·보급 지원");
+    state.thisTurn.visualEvents.push({ type: "korea_rear_support", turn: state.turn });
+  }
+}
+
+function applyAlliedInterventionEffects(state) {
+  const allied = state.persistent.alliedIntervention;
+  if (!allied?.active) return;
+
+  // 미국 개입은 즉시 게임 종료가 아니라, 이후 교전을 바꾸는 지속 압력으로 작동한다.
+  addGauge(state, "chinaTempo", -4);
+  addGauge(state, "chinaSupply", -2);
+  addGauge(state, "chinaPoliticalPressure", 2);
+  addGauge(state, "taiwanCommand", 2);
+  addGauge(state, "taiwanSupply", 2);
+  state.thisTurn.operationLog.push("동맹 개입 지속: 중국 작전 템포 -4 / 보급 -2, 대만 지휘 +2 / 보급 +2");
+  state.thisTurn.visualEvents.push({ type: "us_air_patrol", turn: state.turn });
+
+  if (allied.japanNavalSupport) {
+    addGauge(state, "chinaSupply", -2);
+    addGauge(state, "taiwanCommand", 1);
+    state.thisTurn.operationLog.push("일본 해상지원: 중국 보급 -2 / 대만 지휘 +1");
+    state.thisTurn.visualEvents.push({ type: "japan_fleet_screen", turn: state.turn });
+  }
+
+  if (allied.koreaRearSupportActive) {
+    addGauge(state, "taiwanSupply", 3);
+    addGauge(state, "taiwanCommand", 1);
+    state.thisTurn.operationLog.push("한국 후방지원: 대만 보급 +3 / 지휘 +1");
+    state.thisTurn.visualEvents.push({ type: "korea_logistics", turn: state.turn });
+  }
+}
+
 export function phaseDamagePolitical(state) {
   // 보급 붕괴 처리: 보급 0 상태가 방치되면 사기/정부 기능이 흔들린다.
   // 단, 즉시 패배가 아니라 장기 압박으로 누적되어야 한다.
@@ -487,6 +547,10 @@ export function phaseDamagePolitical(state) {
   } else {
     addGauge(state, "chinaPoliticalPressure", -2);
   }
+
+  updateAlliedInterventionState(state);
+  applyAlliedInterventionEffects(state);
+
   state.log.push({ turn: state.turn, phase: 5, name: "damage_political" });
   return state;
 }
@@ -500,6 +564,7 @@ export function phaseInternationalIntervention(state, events, timing) {
     state.thisTurn.triggeredEvents.push(event.id);
     state.thisTurn.operationLog.push(`이벤트 발동: ${event.name}`);
   }
+  updateAlliedInterventionState(state);
   state.log.push({
     turn: state.turn, phase: 6, name: `intervention_${timing}`,
     triggeredEvents: [...state.thisTurn.triggeredEvents]
@@ -610,6 +675,13 @@ function resolveOperationEffects(state, { source, axis, effects, riskOnFailure, 
   const { successEffects, immediateEffects } = splitCombatEffects(effects);
   applyEffects(state, immediateEffects, ctxBase);
 
+  // 상륙/진척 계열 효과는 실제 지역 타깃이 필요하다.
+  // 유효 타깃이 없으면 "전역/비접촉 영역"으로 추상 전투를 굴리지 않는다.
+  if (requiresProvinceTarget(successEffects) && !(targetIds && targetIds.length)) {
+    state.thisTurn.operationLog.push(`${source?.name || "작전"} 보류: 유효한 지역 타깃 없음`);
+    return { resolvedByCombat: false, skipped: true, reason: "no_valid_target" };
+  }
+
   // 성공 의존 효과가 없고 실패 리스크도 없으면 판정 불필요
   if (!Object.keys(successEffects).length && !riskOnFailure) {
     return { resolvedByCombat: false };
@@ -639,6 +711,11 @@ function resolveOperationEffects(state, { source, axis, effects, riskOnFailure, 
   }
 
   return result;
+}
+
+function requiresProvinceTarget(effects = {}) {
+  return Object.prototype.hasOwnProperty.call(effects, "landingProgressBonus") ||
+    Object.prototype.hasOwnProperty.call(effects, "landingProgressBonusOnSuccess");
 }
 
 function mergeEffects(base = {}, bonus = {}) {
@@ -679,7 +756,8 @@ export function checkVictoryConditions(state) {
   }
 
   // 대만 승리
-  if (state.gauges.usIntervention >= 100) return "taiwan_us_intervention_win";
+  // 미국 개입도 100은 즉시 승리가 아니라 동맹 개입 단계 진입이다.
+  // 전투는 계속 진행되며, 대만은 최종 턴까지 생존하거나 중국 정치 압박을 100까지 올려야 승리한다.
   if (state.gauges.chinaPoliticalPressure >= 100) return "taiwan_political_collapse_win";
   if (state.turn >= GAME_RULES.totalTurns) return "taiwan_survival_win";
 

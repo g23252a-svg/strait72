@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>해협의 72시간 - v0.3.2 Playtest UI</title>
+  <title>해협의 72시간 - v0.3.4 Allied Intervention Playtest UI</title>
   <style>
     :root {
       --bg: #07111f;
@@ -83,6 +83,7 @@
     }
 
     .chip strong { color: var(--text); }
+    .chip.amber { border-color: rgba(245,184,75,.55); color: #ffd88a; background: rgba(245,184,75,.10); }
 
     .reset-top {
       border-color: rgba(255, 89, 100, .45);
@@ -346,7 +347,7 @@
     <header>
       <div class="title">
         <h1>해협의 72시간</h1>
-        <span>Strait 72 · v0.3.2 playtest UI</span>
+        <span>Strait 72 · v0.3.4 allied intervention UI</span>
       </div>
       <div class="turnline">
         <span class="chip"><strong id="turnCounter">TURN - / -</strong></span>
@@ -416,6 +417,6 @@
     </footer>
   </div>
 
-  <script type="module" src="./src/playable_app.js?v=032-20260523"></script>
+  <script type="module" src="./src/playable_app.js?v=034-20260523"></script>
 </body>
 </html>

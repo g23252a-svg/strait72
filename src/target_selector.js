@@ -106,9 +106,17 @@ export function selectChinaAttackTarget(state, card, axis = null) {
   const candidates = candidateProvinceIds(card);
   if (!candidates.length) return null;
 
-  // 1. 플레이어 명시 우선
+  // 1. 플레이어 명시 우선.
+  // 단, 이미 중국 통제 지역이면 같은 지역을 반복 타격하지 않도록 무시한다.
   const explicit = state.thisTurn?.selectedProvince;
-  if (explicit && candidates.includes(explicit)) return explicit;
+  if (
+    explicit &&
+    candidates.includes(explicit) &&
+    state.provinces[explicit] &&
+    state.provinces[explicit].controlStage !== "china_control"
+  ) {
+    return explicit;
+  }
 
   // 2. 점수 기반 선택
   const scored = candidates

@@ -160,7 +160,8 @@ export function createInitialState({ provinces, gameRules, axes, cardsChina, car
       attackBonus: { china: 0, taiwan: 0 },
       defenseDebuff: 0,                    // 야간 작전 등
       operationLog: [],
-      triggeredEvents: []
+      triggeredEvents: [],
+      visualEvents: []
     },
 
     // ---- 지속 효과 ----
@@ -170,7 +171,14 @@ export function createInitialState({ provinces, gameRules, axes, cardsChina, car
       eventCooldowns: {},                   // { eventId: turnsRemaining }
       triggeredOnce: [],                    // 일회성 발동 이벤트 id 목록
       occurrenceCount: {},                  // { eventId: 발동 횟수 }
-      recentChinaAxes: []                  // 최근 주공축 기록, AI 반복 패널티용
+      recentChinaAxes: [],                 // 최근 주공축 기록, AI 반복 패널티용
+      alliedIntervention: {
+        active: false,
+        activatedTurn: null,
+        usCombatSupport: false,
+        japanNavalSupport: false,
+        koreaRearSupportActive: false
+      }
     },
 
     outcome: null,                          // null | "china_*" | "taiwan_*"
@@ -192,7 +200,8 @@ export function resetTurnState(state) {
     attackBonus: { china: 0, taiwan: 0 },
     defenseDebuff: 0,
     operationLog: [],
-    triggeredEvents: []
+    triggeredEvents: [],
+    visualEvents: []
   };
 }
 

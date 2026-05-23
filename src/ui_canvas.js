@@ -59,6 +59,8 @@ export function drawGameCanvas(canvas, state, meta = {}) {
   drawStraitGrid(ctx, w, h);
   drawTaiwanSilhouette(ctx, w, h);
   drawRoutes(ctx, w, h);
+  drawOperationalMotion(ctx, w, h, state, meta);
+  drawAlliedIntervention(ctx, w, h, state, meta);
   drawProvinces(ctx, w, h, state, meta);
   drawTopHud(ctx, w, h, state, meta);
 }
@@ -168,6 +170,174 @@ function drawRoutes(ctx, w, h) {
   ctx.restore();
 }
 
+
+function drawOperationalMotion(ctx, w, h, state, meta = {}) {
+  const t = (Date.now() % 1200) / 1200;
+  const strait = PROVINCE_LAYOUT.strait;
+  if (!strait) return;
+
+  ctx.save();
+  ctx.setLineDash([10, 10]);
+  ctx.lineDashOffset = -t * 28;
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "rgba(255, 85, 96, .60)";
+
+  for (const [id, province] of Object.entries(state.provinces || {})) {
+    if (id === "strait") continue;
+    const pos = PROVINCE_LAYOUT[id];
+    if (!pos) continue;
+
+    const hasLanding = province.landingStage && province.landingStage !== "none";
+    const controlled = province.controlStage === "china_control";
+    if (!hasLanding && !controlled) continue;
+
+    const sx = strait.x * w;
+    const sy = strait.y * h;
+    const tx = pos.x * w;
+    const ty = pos.y * h;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.bezierCurveTo((sx + tx) / 2 - 70, (sy + ty) / 2, (sx + tx) / 2, (sy + ty) / 2 + 40, tx, ty);
+    ctx.stroke();
+
+    // 움직이는 상륙정 토큰
+    const lx = sx + (tx - sx) * (0.35 + 0.35 * t);
+    const ly = sy + (ty - sy) * (0.35 + 0.35 * t);
+    drawShipIcon(ctx, lx, ly, "#ff6b76", controlled ? "중국 통제" : "상륙");
+  }
+  ctx.restore();
+}
+
+function drawAlliedIntervention(ctx, w, h, state, meta = {}) {
+  const allied = state.persistent?.alliedIntervention;
+  if (!allied?.active) return;
+
+  const t = (Date.now() % 1500) / 1500;
+  ctx.save();
+
+  // 미국 항모전단: 대만 동쪽 해상에서 진입
+  const baseX = w * 0.84;
+  const baseY = h * 0.30;
+  drawFleetGroup(ctx, baseX, baseY, "🇺🇸 미 항모전단", "#5aa9ff", t);
+
+  drawMovingArrow(ctx, baseX - 18, baseY + 26, w * 0.67, h * 0.45, "#5aa9ff", t);
+
+  if (allied.japanNavalSupport) {
+    drawFleetGroup(ctx, w * 0.76, h * 0.14, "🇯🇵 일본 해상지원", "#8bd3ff", (t + 0.3) % 1);
+    drawMovingArrow(ctx, w * 0.75, h * 0.19, w * 0.61, h * 0.31, "#8bd3ff", t);
+  }
+
+  if (allied.koreaRearSupportActive) {
+    ctx.setLineDash([8, 8]);
+    ctx.lineDashOffset = -t * 24;
+    ctx.strokeStyle = "rgba(120, 220, 180, .72)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(w * 0.82, h * 0.07);
+    ctx.quadraticCurveTo(w * 0.90, h * 0.18, w * 0.79, h * 0.28);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    drawSupportNode(ctx, w * 0.84, h * 0.07, "🇰🇷 후방지원", "#4fd18b");
+  }
+
+  ctx.restore();
+}
+
+function drawMovingArrow(ctx, x1, y1, x2, y2, color, t) {
+  ctx.save();
+  ctx.setLineDash([9, 8]);
+  ctx.lineDashOffset = -t * 30;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.quadraticCurveTo((x1 + x2) / 2 + 35, (y1 + y2) / 2 - 20, x2, y2);
+  ctx.stroke();
+
+  const ax = x1 + (x2 - x1) * (0.65 + 0.20 * t);
+  const ay = y1 + (y2 - y1) * (0.65 + 0.20 * t);
+  drawAircraftIcon(ctx, ax, ay, color);
+  ctx.restore();
+}
+
+function drawFleetGroup(ctx, x, y, label, color, t) {
+  ctx.save();
+  ctx.globalAlpha = 0.92;
+  drawShipIcon(ctx, x, y, color, "CV");
+  drawShipIcon(ctx, x - 34, y + 22, color, "DD");
+  drawShipIcon(ctx, x + 30, y + 24, color, "DD");
+  ctx.fillStyle = "rgba(3, 12, 24, .72)";
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  roundRect(ctx, x - 58, y - 48, 116, 22, 9);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#eaf3ff";
+  ctx.font = "700 11px system-ui";
+  ctx.textAlign = "center";
+  ctx.fillText(label, x, y - 33);
+  ctx.restore();
+}
+
+function drawShipIcon(ctx, x, y, color, label = "") {
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.strokeStyle = "rgba(255,255,255,.85)";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(x - 15, y + 5);
+  ctx.lineTo(x + 12, y + 5);
+  ctx.lineTo(x + 18, y);
+  ctx.lineTo(x + 4, y - 6);
+  ctx.lineTo(x - 12, y - 5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  if (label) {
+    ctx.fillStyle = "#fff";
+    ctx.font = "700 9px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText(label, x, y - 10);
+  }
+  ctx.restore();
+}
+
+function drawAircraftIcon(ctx, x, y, color) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(-0.25);
+  ctx.fillStyle = color;
+  ctx.strokeStyle = "rgba(255,255,255,.85)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(16, 0);
+  ctx.lineTo(-8, -5);
+  ctx.lineTo(-2, 0);
+  ctx.lineTo(-8, 5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawSupportNode(ctx, x, y, label, color) {
+  ctx.save();
+  ctx.fillStyle = "rgba(3, 12, 24, .76)";
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  roundRect(ctx, x - 50, y - 13, 100, 26, 12);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#eaf3ff";
+  ctx.font = "700 11px system-ui";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, x, y);
+  ctx.textBaseline = "alphabetic";
+  ctx.restore();
+}
+
+
 function drawProvinces(ctx, w, h, state, meta) {
   for (const [id, pos] of Object.entries(PROVINCE_LAYOUT)) {
     const province = state.provinces[id];
@@ -275,7 +445,7 @@ function drawTopHud(ctx, w, h, state, meta) {
 
   ctx.textAlign = "right";
   ctx.fillStyle = state.outcome ? "#ffd66b" : "rgba(232,244,255,.8)";
-  ctx.fillText(state.outcome ? `결과: ${state.outcome}` : "작전 진행 중", w - 44, 56);
+  ctx.fillText(state.outcome ? "작전 종료" : (state.persistent?.alliedIntervention?.active ? "동맹 개입 후 교전" : "작전 진행 중"), w - 44, 56);
   ctx.restore();
 }
 
