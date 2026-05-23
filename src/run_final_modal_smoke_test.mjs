@@ -1,42 +1,19 @@
 // =====================================================================
-// run_final_modal_smoke_test.mjs (v0.4.0-d2)
+// run_final_modal_smoke_test.mjs (v0.4.0-d2 ~ d2.1)
 // ---------------------------------------------------------------------
-// final modal의 로직 부분 검증 (DOM은 jsdom 없이 못 함).
+// final modal의 로직 부분 검증 + 실제 함수 export 검증.
 //
-// 검증:
-//   1. buildFinalReport는 정상 동작 (이미 d1 smoke에서 확인됨)
-//   2. compressBreakdown: 긍정 top 3, 부정 top 2, 나머지 압축
-//   3. compressBreakdown: 작은 데이터셋 (3 이하) 처리
-//   4. compressBreakdown: 빈 components
-//   5. compressBreakdown: 모두 긍정 / 모두 부정
-//   6. playerSide 결정 — campaign.selectedSide === "both" 시 점수 높은 쪽
+// d2.1 추가:
+//   - compressBreakdown은 final_grade.js의 실제 export 사용 (smoke가 복사본 검증하던 구멍 fix)
+//   - formatGameTime은 turn number를 받아야 정상 동작 검증
+//   - occupied/contested summary의 isOccupiable 필터 적용 검증
+//   - HTML 렌더 시뮬레이션 (DOM 없이 문자열 조립)
 // =====================================================================
 
-import { buildFinalReport } from "./final_grade.js";
+import { buildFinalReport, compressBreakdown } from "./final_grade.js";
+import { formatGameTime } from "./game_rules.js";
 
-console.log("[final_modal smoke test v0.4.0-d2]");
-
-// compressBreakdown 로직 재구현 (playable_app.js와 동일)
-function compressBreakdown(components) {
-  const positives = components.filter(c => c.delta > 0).sort((a, b) => b.delta - a.delta);
-  const negatives = components.filter(c => c.delta < 0).sort((a, b) => a.delta - b.delta);
-  const topPos = positives.slice(0, 3);
-  const topNeg = negatives.slice(0, 2);
-  const restPos = positives.slice(3);
-  const restNeg = negatives.slice(2);
-  return {
-    positives: topPos,
-    negatives: topNeg,
-    othersPositive: {
-      count: restPos.length,
-      delta: restPos.reduce((s, c) => s + c.delta, 0)
-    },
-    othersNegative: {
-      count: restNeg.length,
-      delta: restNeg.reduce((s, c) => s + c.delta, 0)
-    }
-  };
-}
+console.log("[final_modal smoke test v0.4.0-d2.1]");
 
 // 1. 풀 컴포넌트셋 (긍정 5 + 부정 3)
 console.log("\n1. compressBreakdown — 긍정 5, 부정 3");
@@ -175,5 +152,113 @@ console.log("\n7. selectedSide=both 시 점수 높은 쪽이 player");
 const bothReport = buildFinalReport(state, { selectedSide: "both" }, { gameRules: { totalTurns: 30 } });
 const playerSide = bothReport.taiwan.score >= bothReport.china.score ? "taiwan" : "china";
 console.log(`  ✓ both 모드 → taiwan ${bothReport.taiwan.score} vs china ${bothReport.china.score} → player=${playerSide}`);
+
+// =====================================================================
+// d2.1 신규 검증
+// =====================================================================
+console.log("\n[d2.1 hotfix 검증]");
+
+// 8. formatGameTime은 turn number만 받음 — state 객체 그대로 넣으면 NaN
+console.log("\n8. formatGameTime은 number를 받아야 함");
+const goodTime = formatGameTime(20);
+if (typeof goodTime !== "string" || goodTime.includes("NaN")) {
+  console.error(`FAIL: formatGameTime(20) 정상 문자열 아님, got "${goodTime}"`); process.exit(1);
+}
+console.log(`  ✓ formatGameTime(20) = "${goodTime}"`);
+
+// state 객체 넣으면 NaN (이전 d2 버그 재현)
+const badTime = formatGameTime({ turn: 20 });
+if (!badTime.includes("NaN")) {
+  console.error(`FAIL: state 객체 넘기면 NaN이어야 (d2 버그 재현 시험), got "${badTime}"`);
+  process.exit(1);
+}
+console.log(`  ✓ formatGameTime(state) → "${badTime}" (예상대로 NaN. P0 회귀 방지)`);
+
+// final modal subtitle은 finalTurn(number) 사용해야
+const correctSubtitle = `캠페인 종료 · T${report.finalTurn} / 30 · ${formatGameTime(report.finalTurn)}`;
+if (correctSubtitle.includes("NaN")) {
+  console.error(`FAIL: subtitle에 NaN 포함, got "${correctSubtitle}"`); process.exit(1);
+}
+console.log(`  ✓ 실제 subtitle 문자열: "${correctSubtitle}"`);
+
+// 9. compressBreakdown은 실제 export된 함수 (d2 smoke 구멍 fix 검증)
+console.log("\n9. compressBreakdown은 실제 export 사용");
+import * as fgModule from "./final_grade.js";
+if (typeof fgModule.compressBreakdown !== "function") {
+  console.error(`FAIL: compressBreakdown export 없음`); process.exit(1);
+}
+console.log(`  ✓ compressBreakdown export 확인 (이 smoke가 실제 함수 검증)`);
+
+// 10. summary occupied/contested는 sea_zone 제외
+console.log("\n10. summary occupied/contested에 isOccupiable 필터 적용");
+const seaInSummary = {
+  outcome: "taiwan_survival_win",
+  turn: 30,
+  gauges: { usIntervention: 50, japanIntervention: 30, koreaRearSupport: 15,
+            taiwanGovernment: 80, taiwanMorale: 70, taiwanSupply: 60, taiwanCommand: 80 },
+  provinces: {
+    taipei: { id: "taipei", name: "타이베이", type: "capital", controlStage: "stable_defense" },
+    strait: { id: "strait", name: "대만 해협", type: "sea_zone", controlStage: "china_control", landingStage: "beachhead" },  // sea_zone인데 점령됨
+    keelung: { id: "keelung", name: "지룽", type: "port", controlStage: "china_control" },
+    taichung: { id: "taichung", name: "타이중", type: "city", controlStage: "stable_defense", landingStage: "beachhead" }
+  },
+  persistent: { rewards: [], triggeredOnce: [] },
+  log: []
+};
+const seaReport = buildFinalReport(seaInSummary, { selectedSide: "taiwan" }, { gameRules: { totalTurns: 30 } });
+
+// occupied: keelung만 (strait는 sea_zone이라 제외)
+if (seaReport.summary.occupiedProvinces.length !== 1) {
+  console.error(`FAIL: occupied 1개 (keelung)이어야, got ${seaReport.summary.occupiedProvinces.length}: ${JSON.stringify(seaReport.summary.occupiedProvinces)}`);
+  process.exit(1);
+}
+if (!seaReport.summary.occupiedProvinces.includes("지룽")) {
+  console.error(`FAIL: 지룽 누락, got ${JSON.stringify(seaReport.summary.occupiedProvinces)}`); process.exit(1);
+}
+if (seaReport.summary.occupiedProvinces.includes("대만 해협")) {
+  console.error(`FAIL: 대만 해협이 occupied에 포함됨 (sea_zone 필터 안 됨)`); process.exit(1);
+}
+console.log(`  ✓ occupied: ${JSON.stringify(seaReport.summary.occupiedProvinces)} (sea_zone 제외)`);
+
+// contested: taichung만 (strait는 sea_zone이라 제외)
+if (seaReport.summary.contestedProvinces.length !== 1) {
+  console.error(`FAIL: contested 1개 (taichung)이어야, got ${seaReport.summary.contestedProvinces.length}: ${JSON.stringify(seaReport.summary.contestedProvinces)}`);
+  process.exit(1);
+}
+if (!seaReport.summary.contestedProvinces.includes("타이중")) {
+  console.error(`FAIL: 타이중 누락`); process.exit(1);
+}
+console.log(`  ✓ contested: ${JSON.stringify(seaReport.summary.contestedProvinces)} (sea_zone 제외)`);
+
+// 11. 렌더 시뮬레이션 — buildFinalReport + compressBreakdown 결과를 모달 HTML에 채워 NaN/undefined 없는지
+console.log("\n11. 렌더 문자열 시뮬레이션");
+const rsim = buildFinalReport(state, { selectedSide: "taiwan" }, { gameRules: { totalTurns: 30 } });
+const cb = compressBreakdown(rsim.taiwan.components);
+// 모달 핵심 라인들이 NaN/undefined 없이 만들어지는지
+const simSubtitle = `T${rsim.finalTurn} / ${rsim.totalTurns} · ${formatGameTime(rsim.finalTurn)}`;
+const simTitle = rsim.title;
+const simGradeLetter = `${rsim.taiwan.grade}`;
+const simScore = `${rsim.taiwan.score} / 100`;
+const simInterp = rsim.taiwan.interpretation;
+const simBase = `+${rsim.taiwan.base}`;
+const simTopPos = cb.positives.map(c => `${c.label} +${c.delta}`).join(" / ");
+const simTopNeg = cb.negatives.map(c => `${c.label} ${c.delta}`).join(" / ");
+
+const allLines = [simSubtitle, simTitle, simGradeLetter, simScore, simInterp, simBase, simTopPos, simTopNeg];
+for (const line of allLines) {
+  if (line === undefined || line === null) {
+    console.error(`FAIL: 모달 라인이 undefined/null: ${allLines.indexOf(line)}`); process.exit(1);
+  }
+  const s = String(line);
+  if (s.includes("NaN") || s.includes("undefined")) {
+    console.error(`FAIL: 모달 라인에 NaN/undefined: "${s}"`); process.exit(1);
+  }
+}
+console.log(`  ✓ subtitle: "${simSubtitle}"`);
+console.log(`  ✓ title: "${simTitle}"`);
+console.log(`  ✓ grade: ${simGradeLetter} (${simScore})`);
+console.log(`  ✓ base ${simBase}, 긍정 [${simTopPos}], 부정 [${simTopNeg || "없음"}]`);
+console.log(`  ✓ interp: ${simInterp.slice(0, 40)}…`);
+console.log(`  ✓ 모달 핵심 라인 ${allLines.length}개 모두 NaN/undefined 없음`);
 
 console.log("\n✓ final_modal smoke test passed");

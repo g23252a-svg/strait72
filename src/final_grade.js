@@ -284,10 +284,11 @@ const INTERPRETATION_MATRIX = {
 // ---------------------------------------------------------------------
 // d1.1: strait 등 sea_zone은 점령 대상이 아님. type 필터로 제외.
 // 점령 가능한 type: capital, port, airport, city, major_port, east_port
+// d2.1: isOccupiable export — final report의 occupied/contested에도 같은 기준 적용
 // =====================================================================
 const OCCUPIABLE_TYPES = new Set(["capital", "port", "airport", "city", "major_port", "east_port"]);
 
-function isOccupiable(province) {
+export function isOccupiable(province) {
   // type이 명시되어 있으면 그 기준, 없으면 일단 포함 (방어적 fallback)
   if (province?.type) return OCCUPIABLE_TYPES.has(province.type);
   return province?.id !== "strait";
@@ -331,11 +332,13 @@ export function buildFinalReport(state, campaign, data = {}) {
   // 결과 제목
   const title = outcomeTitle(outcome);
 
-  // 점령 변화 요약
+  // 점령 변화 요약 (d2.1: isOccupiable 필터로 점수와 기준 통일 — sea_zone 제외)
   const occupiedNow = Object.values(state.provinces || {})
+    .filter(isOccupiable)
     .filter(p => p.controlStage === "china_control")
     .map(p => p.name || p.id);
   const contestedNow = Object.values(state.provinces || {})
+    .filter(isOccupiable)
     .filter(p => p.landingStage && p.landingStage !== "none" && p.controlStage !== "china_control")
     .map(p => p.name || p.id);
 
@@ -405,4 +408,34 @@ function outcomeTitle(outcome) {
     case "no_outcome": return "결판 없음";
     default: return outcome;
   }
+}
+
+// =====================================================================
+// v0.4.0-d2.1: compressBreakdown — UI에서 점수 요인 압축 표시
+// ---------------------------------------------------------------------
+// 정책 (사용자 명세):
+//   - 긍정 top 3
+//   - 부정 top 2
+//   - 나머지는 "기타 +N개 ±M" 합산
+// 별도 export → smoke가 실제 함수 검증 가능 (d2 smoke의 복사본 구멍 fix)
+// =====================================================================
+export function compressBreakdown(components) {
+  const positives = (components || []).filter(c => c.delta > 0).sort((a, b) => b.delta - a.delta);
+  const negatives = (components || []).filter(c => c.delta < 0).sort((a, b) => a.delta - b.delta);
+  const topPos = positives.slice(0, 3);
+  const topNeg = negatives.slice(0, 2);
+  const restPos = positives.slice(3);
+  const restNeg = negatives.slice(2);
+  return {
+    positives: topPos,
+    negatives: topNeg,
+    othersPositive: {
+      count: restPos.length,
+      delta: restPos.reduce((s, c) => s + c.delta, 0)
+    },
+    othersNegative: {
+      count: restNeg.length,
+      delta: restNeg.reduce((s, c) => s + c.delta, 0)
+    }
+  };
 }

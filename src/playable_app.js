@@ -33,7 +33,7 @@ import {
   drawRewards, applyReward, describeRewardApplication
 } from "./reward_system.js";
 import {
-  buildFinalReport, gradeFromScore
+  buildFinalReport, gradeFromScore, compressBreakdown
 } from "./final_grade.js";
 
 const DATA_PATHS = {
@@ -63,7 +63,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.4.0-d2";
+const EXPECTED_BUILD = "v0.4.0-d2.1";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -1598,7 +1598,7 @@ function showFinalResultModal() {
   overlay.innerHTML = `
     <div class="final-modal">
       <div class="final-header">
-        <div class="final-subtitle">캠페인 종료 · T${report.finalTurn} / ${report.totalTurns} · ${formatGameTime(state)}</div>
+        <div class="final-subtitle">캠페인 종료 · T${report.finalTurn} / ${report.totalTurns} · ${formatGameTime(report.finalTurn)}</div>
         <h2 class="final-title">${escapeHtml(report.title)}</h2>
       </div>
 
@@ -1761,28 +1761,6 @@ function showFinalResultModal() {
       dom.autoTurnBtn.disabled = false;
     });
   });
-}
-
-// breakdown 압축: 긍정 top 3 + 부정 top 2 + 나머지 합산
-function compressBreakdown(components) {
-  const positives = components.filter(c => c.delta > 0).sort((a, b) => b.delta - a.delta);
-  const negatives = components.filter(c => c.delta < 0).sort((a, b) => a.delta - b.delta);
-  const topPos = positives.slice(0, 3);
-  const topNeg = negatives.slice(0, 2);
-  const restPos = positives.slice(3);
-  const restNeg = negatives.slice(2);
-  return {
-    positives: topPos,
-    negatives: topNeg,
-    othersPositive: {
-      count: restPos.length,
-      delta: restPos.reduce((s, c) => s + c.delta, 0)
-    },
-    othersNegative: {
-      count: restNeg.length,
-      delta: restNeg.reduce((s, c) => s + c.delta, 0)
-    }
-  };
 }
 
 
