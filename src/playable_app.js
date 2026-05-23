@@ -29,13 +29,17 @@ import {
   TURNS_PER_DAY, dayNumberForTurn, isDayEndTurn,
   formatDayLabel, buildDayReport
 } from "./day_cycle.js";
+import {
+  drawRewards, applyReward, describeRewardApplication
+} from "./reward_system.js";
 
 const DATA_PATHS = {
   axes: "./data/axes.json",
   provinces: "./data/provinces.json",
   cardsChina: "./data/cards_china.json",
   cardsTaiwan: "./data/cards_taiwan.json",
-  events: "./data/events_global.json"
+  events: "./data/events_global.json",
+  rewards: "./data/rewards.json"
 };
 
 const dom = {};
@@ -55,7 +59,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.4.0-b";
+const EXPECTED_BUILD = "v0.4.0-c2-b1.1";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -1112,6 +1116,12 @@ function showDayEndModal(dayNumber) {
   const report = buildDayReport(state, dayNumber, data.events || []);
   pendingDayModal = true;
 
+  // v0.4.0-c1: 플레이어 진영의 보상 3개 추첨 (양쪽 보기 모드도 일단 대만 기준)
+  const playerSide = (campaign?.selectedSide === "china") ? "china" : "taiwan";
+  const rewardsAll = data.rewards?.rewards || [];
+  const drawnRewards = drawRewards(rewardsAll, playerSide, state, report, 3);
+  let selectedRewardId = null;
+
   const overlay = document.createElement("div");
   overlay.id = "dayEndOverlay";
   overlay.style.cssText = `
@@ -1167,9 +1177,19 @@ function showDayEndModal(dayNumber) {
         <p>${escapeHtml(interpretationText)}</p>
       </section>
 
+      ${drawnRewards.length ? `
+      <section class="reward-section">
+        <h3>보상 선택 (필수)</h3>
+        <p class="reward-hint">${describeRewardCategorySummary(drawnRewards)}</p>
+        <div class="reward-list" id="rewardList">
+          ${drawnRewards.map(r => renderRewardCard(r)).join("")}
+        </div>
+      </section>
+      ` : ""}
+
       <div class="day-controls">
-        <button id="dayContinueBtn" class="primary">다음 날 계속</button>
-        <button id="dayAutoBtn" class="secondary">다음 DAY까지 자동 진행</button>
+        <button id="dayContinueBtn" class="primary" disabled>${drawnRewards.length ? "보상 선택 → 다음 날" : "다음 날 계속"}</button>
+        <button id="dayAutoBtn" class="secondary" disabled>다음 DAY까지 자동 진행</button>
         <label class="auto-close-toggle">
           <input type="checkbox" id="dayAutoCloseToggle" ${dayAutoCloseEnabled ? "checked" : ""} />
           DAY 요약 자동 닫기
@@ -1229,17 +1249,132 @@ function showDayEndModal(dayNumber) {
         flex: 0 0 100%; text-align: center;
         margin-top: 4px;
       }
+
+      /* v0.4.0-c1: 보상 선택 */
+      .reward-section { margin-top: 18px; padding-top: 14px; border-top: 1px dashed rgba(255,214,107,.3); }
+      .reward-section h3 { color: #ffd66b !important; font-size: 13px !important; }
+      .reward-hint { font-size: 11px; color: rgba(234, 243, 255, .55); margin: 0 0 8px; }
+      .reward-list { display: grid; gap: 8px; }
+      .reward-card {
+        background: rgba(255,255,255,.04);
+        border: 1.5px solid rgba(255,255,255,.10);
+        border-radius: 10px;
+        padding: 12px 14px;
+        cursor: pointer;
+        text-align: left;
+        color: inherit;
+        transition: all .15s;
+      }
+      .reward-card:hover {
+        background: rgba(255, 214, 107, .08);
+        border-color: rgba(255, 214, 107, .4);
+      }
+      .reward-card[data-selected="true"] {
+        background: rgba(255, 214, 107, .15);
+        border-color: #ffd66b;
+        box-shadow: 0 0 0 1px #ffd66b inset;
+      }
+      .reward-name {
+        font-size: 13.5px;
+        font-weight: 700;
+        color: #ffd66b;
+        margin-bottom: 3px;
+      }
+      .reward-category {
+        font-size: 10px;
+        color: rgba(234, 243, 255, .45);
+        text-transform: uppercase;
+        letter-spacing: .8px;
+        margin-bottom: 5px;
+      }
+      .reward-desc {
+        font-size: 11.5px;
+        color: rgba(234, 243, 255, .78);
+        line-height: 1.5;
+        margin-bottom: 4px;
+      }
+      .reward-effect {
+        font-size: 11.5px;
+        color: #80efb1;
+        font-weight: 600;
+      }
+
+      /* v0.4.0-c2-a: 보상 타입 배지 */
+      .reward-card-top {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 3px;
+      }
+      .reward-badge {
+        font-size: 9px;
+        font-weight: 800;
+        padding: 2px 6px;
+        border-radius: 4px;
+        letter-spacing: .8px;
+      }
+      .reward-badge-instant { background: rgba(128,239,177,.15); color: #80efb1; }
+      .reward-badge-card { background: rgba(255,214,107,.18); color: #ffd66b; }
+      .reward-badge-persistent { background: rgba(124,171,220,.18); color: #7cabdc; }
     </style>
   `;
   document.body.appendChild(overlay);
 
-  function close() {
-    pendingDayModal = false;
-    overlay.remove();
+  const continueBtn = overlay.querySelector("#dayContinueBtn");
+  const autoBtn = overlay.querySelector("#dayAutoBtn");
+
+  function updateBtnState() {
+    const valid = drawnRewards.length === 0 || selectedRewardId !== null;
+    continueBtn.disabled = !valid;
+    autoBtn.disabled = !valid;
+  }
+  updateBtnState();
+
+  // 보상 카드 선택 핸들러
+  const rewardListEl = overlay.querySelector("#rewardList");
+  if (rewardListEl) {
+    rewardListEl.addEventListener("click", (e) => {
+      const card = e.target.closest(".reward-card");
+      if (!card) return;
+      rewardListEl.querySelectorAll(".reward-card").forEach(c => c.removeAttribute("data-selected"));
+      card.setAttribute("data-selected", "true");
+      selectedRewardId = card.dataset.rewardId;
+      updateBtnState();
+    });
   }
 
-  overlay.querySelector("#dayContinueBtn").addEventListener("click", close);
-  overlay.querySelector("#dayAutoBtn").addEventListener("click", () => {
+  function applySelectedReward() {
+    if (!selectedRewardId) return;
+    const reward = drawnRewards.find(r => r.id === selectedRewardId);
+    if (!reward) return;
+    const result = applyReward(state, reward);
+    const logLine = describeRewardApplication(reward, result);
+    // 다음 턴의 operationLog 또는 state.log에 보상 적용 기록
+    if (state.thisTurn?.operationLog) {
+      state.thisTurn.operationLog.push(logLine);
+    }
+    state.log.push({
+      turn: state.turn,
+      phase: 7,
+      name: "day_end_reward",
+      reward: { id: reward.id, name: reward.name, applyTiming: reward.applyTiming },
+      result
+    });
+  }
+
+  function close() {
+    applySelectedReward();
+    pendingDayModal = false;
+    overlay.remove();
+    // 보상 적용 후 화면 갱신 (게이지/덱 변동 반영)
+    render();
+    renderCards();
+  }
+
+  continueBtn.addEventListener("click", () => {
+    if (continueBtn.disabled) return;
+    close();
+  });
+  autoBtn.addEventListener("click", () => {
+    if (autoBtn.disabled) return;
     autoToNextDayMode = true;
     close();
     runAutoToNextDay();
@@ -1247,6 +1382,15 @@ function showDayEndModal(dayNumber) {
   overlay.querySelector("#dayAutoCloseToggle").addEventListener("change", (e) => {
     dayAutoCloseEnabled = e.target.checked;
   });
+
+  // 자동 닫기 토글 ON이면 보상 자동 선택 후 1.5초 후 진행
+  if (dayAutoCloseEnabled && drawnRewards.length > 0) {
+    // 자동 선택: 가중치 가장 높은 (drawRewards가 이미 가중치 추첨 결과니, 단순히 첫 번째 선택)
+    selectedRewardId = drawnRewards[0].id;
+    const firstCard = overlay.querySelector(`.reward-card[data-reward-id="${selectedRewardId}"]`);
+    if (firstCard) firstCard.setAttribute("data-selected", "true");
+    updateBtnState();
+  }
 
   // DAY 자동 닫기 토글 ON이면 1.5초 후 자동 닫기 + 다음 DAY까지 자동 진행
   if (dayAutoCloseEnabled) {
@@ -1269,4 +1413,69 @@ function runAutoToNextDay() {
     runManualTurn();
   }
   autoToNextDayMode = false;
+}
+
+// v0.4.0-c1: 보상 카드 HTML
+function renderRewardCard(reward) {
+  // effect 자연어 요약
+  let effectText = "";
+  let badgeHtml = "";
+
+  if (reward.applyTiming === "add_card") {
+    // v0.4.0-c2-a: 카드 추가 보상은 카드명 명시
+    const cardId = reward.effects?.addCard;
+    const card = indices?.cardIndex?.get?.(cardId);
+    const cardName = card?.name || cardId || "카드";
+    effectText = `🎴 다음 드로우 시 「${cardName}」 1장 손패에 들어옴 (덱 맨 위 삽입)`;
+    badgeHtml = `<div class="reward-badge reward-badge-card">CARD</div>`;
+  } else if (reward.applyTiming === "persistent") {
+    effectText = "영구 효과 — 캠페인 동안 유지 (c2-b에서 활성)";
+    badgeHtml = `<div class="reward-badge reward-badge-persistent">PERSIST</div>`;
+  } else {
+    // instant
+    const lines = [];
+    for (const [key, val] of Object.entries(reward.effects || {})) {
+      if (typeof val === "number") {
+        const sign = val > 0 ? "+" : "";
+        lines.push(`${formatRewardEffectKey(key)} ${sign}${val}`);
+      }
+    }
+    effectText = lines.length ? lines.join(", ") : "효과 없음";
+    badgeHtml = `<div class="reward-badge reward-badge-instant">INSTANT</div>`;
+  }
+
+  return `
+    <button class="reward-card" data-reward-id="${reward.id}">
+      <div class="reward-card-top">
+        <div class="reward-category">${reward.category}</div>
+        ${badgeHtml}
+      </div>
+      <div class="reward-name">${escapeHtml(reward.name)}</div>
+      <div class="reward-desc">${escapeHtml(reward.description || "")}</div>
+      <div class="reward-effect">→ ${escapeHtml(effectText)}</div>
+    </button>
+  `;
+}
+
+function formatRewardEffectKey(key) {
+  const map = {
+    taiwanReserveTroops: "대만 예비군",
+    taiwanSupply: "대만 보급",
+    taiwanGovernment: "대만 정부 기능",
+    taiwanCommand: "대만 지휘 체계",
+    taiwanMorale: "대만 국민 사기",
+    usIntervention: "미국 개입도",
+    japanIntervention: "일본 개입도",
+    internationalOpinion: "국제 여론",
+    chinaTempo: "중국 작전 템포",
+    chinaSupply: "중국 보급력",
+    chinaReserveTroops: "중국 예비 병력",
+    chinaPoliticalPressure: "중국 정치 압박"
+  };
+  return map[key] || key;
+}
+
+function describeRewardCategorySummary(rewards) {
+  const cats = [...new Set(rewards.map(r => r.category))];
+  return `${cats.length}개 카테고리 보상 후보. 전황에 맞는 카드일수록 자주 등장합니다.`;
 }

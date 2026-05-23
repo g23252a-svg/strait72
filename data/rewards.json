@@ -1,0 +1,509 @@
+{
+  "version": "0.4.0-c2-b1",
+  "rewards": [
+    {
+      "id": "tw_reserve_remobilize",
+      "name": "예비군 재편",
+      "side": "taiwan",
+      "category": "defense",
+      "description": "예비 부대를 재편성하여 추가 전력을 확보합니다.",
+      "applyTiming": "instant",
+      "enabledInC1": true,
+      "effects": {
+        "taiwanReserveTroops": 2
+      },
+      "weightConditions": [
+        {
+          "if": "taiwanReserveTroopsBelow",
+          "value": 5,
+          "weight": 4
+        },
+        {
+          "if": "majorBattleHappened",
+          "weight": 2
+        }
+      ]
+    },
+    {
+      "id": "tw_emergency_supply",
+      "name": "긴급 보급 투입",
+      "side": "taiwan",
+      "category": "supply",
+      "description": "예비 보급 물자를 즉시 투입합니다.",
+      "applyTiming": "instant",
+      "enabledInC1": true,
+      "effects": {
+        "taiwanSupply": 12
+      },
+      "weightConditions": [
+        {
+          "if": "taiwanSupplyBelow",
+          "value": 60,
+          "weight": 6
+        },
+        {
+          "if": "taiwanSupplyBelow",
+          "value": 75,
+          "weight": 3
+        }
+      ]
+    },
+    {
+      "id": "tw_international_appeal_boost",
+      "name": "국제 여론전",
+      "side": "taiwan",
+      "category": "diplomacy",
+      "description": "국제 여론을 동맹 진입 방향으로 끌어올립니다.",
+      "applyTiming": "instant",
+      "enabledInC1": true,
+      "effects": {
+        "usIntervention": 6,
+        "internationalOpinion": 4
+      },
+      "weightConditions": [
+        {
+          "if": "usInterventionBelow",
+          "value": 60,
+          "weight": 5
+        },
+        {
+          "if": "usInterventionBelow",
+          "value": 80,
+          "weight": 2
+        }
+      ]
+    },
+    {
+      "id": "tw_government_emergency_restore",
+      "name": "정부 비상복구",
+      "side": "taiwan",
+      "category": "recovery",
+      "description": "정부 기능을 비상 복구합니다.",
+      "applyTiming": "instant",
+      "enabledInC1": true,
+      "effects": {
+        "taiwanGovernment": 8
+      },
+      "weightConditions": [
+        {
+          "if": "taiwanGovernmentBelow",
+          "value": 70,
+          "weight": 5
+        },
+        {
+          "if": "taiwanGovernmentBelow",
+          "value": 85,
+          "weight": 2
+        }
+      ]
+    },
+    {
+      "id": "tw_command_restore",
+      "name": "지휘망 복구",
+      "side": "taiwan",
+      "category": "recovery",
+      "description": "지휘 체계를 빠르게 복구합니다.",
+      "applyTiming": "instant",
+      "enabledInC1": true,
+      "effects": {
+        "taiwanCommand": 10
+      },
+      "weightConditions": [
+        {
+          "if": "taiwanCommandBelow",
+          "value": 80,
+          "weight": 5
+        }
+      ]
+    },
+    {
+      "id": "tw_national_unity_campaign",
+      "name": "국민 결속 캠페인",
+      "side": "taiwan",
+      "category": "recovery",
+      "description": "국민 사기를 결집합니다.",
+      "applyTiming": "instant",
+      "enabledInC1": true,
+      "effects": {
+        "taiwanMorale": 10
+      },
+      "weightConditions": [
+        {
+          "if": "taiwanMoraleBelow",
+          "value": 80,
+          "weight": 4
+        }
+      ]
+    },
+    {
+      "id": "tw_port_fortification",
+      "name": "항만 방어 공사",
+      "side": "taiwan",
+      "category": "defense",
+      "description": "남부 항만 지역의 방어선을 강화합니다.",
+      "applyTiming": "persistent",
+      "enabledInC1": false,
+      "effects": {
+        "defenseValueBonus": {
+          "regions": [
+            "kaohsiung",
+            "tainan"
+          ],
+          "amount": 1
+        }
+      },
+      "weightConditions": [
+        {
+          "if": "provinceLost",
+          "value": "kaohsiung",
+          "weight": 8
+        },
+        {
+          "if": "provinceLost",
+          "value": "tainan",
+          "weight": 8
+        }
+      ]
+    },
+    {
+      "id": "tw_north_defense_dig_in",
+      "name": "북부 진지 강화",
+      "side": "taiwan",
+      "category": "defense",
+      "description": "북부 수도권 인근 방어를 강화합니다.",
+      "applyTiming": "persistent",
+      "enabledInC1": false,
+      "effects": {
+        "defenseValueBonus": {
+          "regions": [
+            "taipei",
+            "keelung",
+            "taoyuan"
+          ],
+          "amount": 1
+        }
+      },
+      "weightConditions": [
+        {
+          "if": "capitalUnderPressure",
+          "weight": 9
+        }
+      ]
+    },
+    {
+      "id": "tw_supply_rerouting",
+      "name": "보급선 우회",
+      "side": "taiwan",
+      "category": "supply",
+      "description": "해상 봉쇄를 우회하는 보급선을 확보합니다.",
+      "applyTiming": "persistent",
+      "enabledInC1": false,
+      "effects": {
+        "taiwanSupplyDamageReduction": 0.3
+      },
+      "weightConditions": [
+        {
+          "if": "taiwanSupplyBelow",
+          "value": 60,
+          "weight": 4
+        }
+      ]
+    },
+    {
+      "id": "tw_humanitarian_campaign",
+      "name": "인도주의 캠페인",
+      "side": "taiwan",
+      "category": "diplomacy",
+      "description": "장기 외교 캠페인으로 일본/미국의 지원을 끌어냅니다.",
+      "applyTiming": "persistent",
+      "enabledInC1": false,
+      "effects": {
+        "perTurnGain": {
+          "usIntervention": 2,
+          "japanIntervention": 1
+        }
+      },
+      "weightConditions": [
+        {
+          "if": "usInterventionBelow",
+          "value": 70,
+          "weight": 3
+        },
+        {
+          "if": "usInterventionBelow",
+          "value": 50,
+          "weight": 5
+        }
+      ],
+      "enabledInC2b1": true
+    },
+    {
+      "id": "tw_card_emergency_restoration",
+      "name": "긴급 복구 카드 1장",
+      "side": "taiwan",
+      "category": "card",
+      "description": "긴급 복구 작전 카드를 덱 맨 위에 추가합니다.",
+      "applyTiming": "add_card",
+      "enabledInC1": false,
+      "effects": {
+        "addCard": "taiwan_emergency_restoration"
+      },
+      "enabledInC2a": true,
+      "weightConditions": [
+        {
+          "if": "taiwanGovernmentBelow",
+          "value": 75,
+          "weight": 4
+        },
+        {
+          "if": "taiwanCommandBelow",
+          "value": 80,
+          "weight": 3
+        }
+      ]
+    },
+    {
+      "id": "tw_card_backup_network",
+      "name": "백업망 가동 카드 1장",
+      "side": "taiwan",
+      "category": "card",
+      "description": "백업망 가동 카운터플레이 카드를 덱 맨 위에 추가합니다.",
+      "applyTiming": "add_card",
+      "enabledInC1": false,
+      "effects": {
+        "addCard": "taiwan_backup_network"
+      },
+      "enabledInC2a": true,
+      "weightConditions": [
+        {
+          "if": "majorBattleHappened",
+          "weight": 3
+        }
+      ]
+    },
+    {
+      "id": "cn_tempo_recovery",
+      "name": "작전 템포 회복",
+      "side": "china",
+      "category": "supply",
+      "description": "작전 템포를 끌어올립니다.",
+      "applyTiming": "instant",
+      "enabledInC1": true,
+      "effects": {
+        "chinaTempo": 12
+      },
+      "weightConditions": [
+        {
+          "if": "chinaTempoBelow",
+          "value": 60,
+          "weight": 5
+        }
+      ]
+    },
+    {
+      "id": "cn_supply_restoration",
+      "name": "보급선 정비",
+      "side": "china",
+      "category": "supply",
+      "description": "후방 보급선을 정비합니다.",
+      "applyTiming": "instant",
+      "enabledInC1": true,
+      "effects": {
+        "chinaSupply": 12
+      },
+      "weightConditions": [
+        {
+          "if": "chinaSupplyBelow",
+          "value": 60,
+          "weight": 5
+        }
+      ]
+    },
+    {
+      "id": "cn_political_control",
+      "name": "정치 통제 강화",
+      "side": "china",
+      "category": "recovery",
+      "description": "내부 정치 압박을 완화합니다.",
+      "applyTiming": "instant",
+      "enabledInC1": true,
+      "effects": {
+        "chinaPoliticalPressure": -8
+      },
+      "weightConditions": [
+        {
+          "if": "chinaPoliticalPressureAbove",
+          "value": 30,
+          "weight": 5
+        },
+        {
+          "if": "chinaPoliticalPressureAbove",
+          "value": 50,
+          "weight": 8
+        }
+      ]
+    },
+    {
+      "id": "cn_info_warfare_renew",
+      "name": "정보전 재정비",
+      "side": "china",
+      "category": "offense",
+      "description": "정보전 부대를 재정비하여 다음 작전을 준비합니다.",
+      "applyTiming": "instant",
+      "enabledInC1": true,
+      "effects": {
+        "chinaTempo": 6,
+        "chinaReserveTroops": 1
+      },
+      "weightConditions": [
+        {
+          "if": "chinaTempoBelow",
+          "value": 70,
+          "weight": 3
+        }
+      ]
+    },
+    {
+      "id": "cn_diplomatic_frame",
+      "name": "외교 프레임 전환",
+      "side": "china",
+      "category": "diplomacy",
+      "description": "외교 프레임을 자국에 유리하게 돌립니다.",
+      "applyTiming": "instant",
+      "enabledInC1": true,
+      "effects": {
+        "usIntervention": -5,
+        "japanIntervention": -3
+      },
+      "weightConditions": [
+        {
+          "if": "usInterventionAbove",
+          "value": 60,
+          "weight": 5
+        },
+        {
+          "if": "usInterventionAbove",
+          "value": 80,
+          "weight": 8
+        }
+      ]
+    },
+    {
+      "id": "cn_landing_force_resupply",
+      "name": "상륙 부대 재편",
+      "side": "china",
+      "category": "offense",
+      "description": "상륙 부대 예비 병력과 보급을 재편합니다.",
+      "applyTiming": "instant",
+      "enabledInC1": true,
+      "effects": {
+        "chinaReserveTroops": 1,
+        "chinaSupply": 6
+      },
+      "weightConditions": [
+        {
+          "if": "chinaReserveTroopsBelow",
+          "value": 5,
+          "weight": 4
+        }
+      ]
+    },
+    {
+      "id": "cn_missile_range_extend",
+      "name": "미사일 사거리 확대",
+      "side": "china",
+      "category": "offense",
+      "description": "미사일 작전의 사거리와 효과를 확장합니다.",
+      "applyTiming": "persistent",
+      "enabledInC1": false,
+      "effects": {
+        "rangedAttackBonus": 1
+      }
+    },
+    {
+      "id": "cn_night_op_efficiency",
+      "name": "야간 작전 효율",
+      "side": "china",
+      "category": "offense",
+      "description": "야간 작전의 방어 보정 약화 효과를 영구 강화합니다.",
+      "applyTiming": "persistent",
+      "enabledInC1": false,
+      "effects": {
+        "nightOpDefenseDebuff": 1
+      }
+    },
+    {
+      "id": "cn_supply_hub_expand",
+      "name": "보급 거점 확대",
+      "side": "china",
+      "category": "supply",
+      "description": "매 턴 추가 보급을 받습니다.",
+      "applyTiming": "persistent",
+      "enabledInC1": false,
+      "effects": {
+        "perTurnGain": {
+          "chinaSupply": 2
+        }
+      },
+      "enabledInC2b1": true,
+      "weightConditions": [
+        {
+          "if": "chinaSupplyBelow",
+          "value": 70,
+          "weight": 3
+        }
+      ]
+    },
+    {
+      "id": "cn_information_control",
+      "name": "정보 통제 강화",
+      "side": "china",
+      "category": "diplomacy",
+      "description": "국제 여론 손실을 영구히 줄입니다.",
+      "applyTiming": "persistent",
+      "enabledInC1": false,
+      "effects": {
+        "internationalOpinionLossReduction": 0.3
+      }
+    },
+    {
+      "id": "cn_card_blitz",
+      "name": "속전속결 카드 1장",
+      "side": "china",
+      "category": "card",
+      "description": "속전속결 명령 카드를 덱 맨 위에 추가합니다.",
+      "applyTiming": "add_card",
+      "enabledInC1": false,
+      "effects": {
+        "addCard": "china_blitz_order"
+      },
+      "enabledInC2a": true,
+      "weightConditions": [
+        {
+          "if": "chinaTempoBelow",
+          "value": 70,
+          "weight": 3
+        }
+      ]
+    },
+    {
+      "id": "cn_card_night_op",
+      "name": "야간 작전 카드 1장",
+      "side": "china",
+      "category": "card",
+      "description": "야간 작전 카드를 덱 맨 위에 추가합니다.",
+      "applyTiming": "add_card",
+      "enabledInC1": false,
+      "effects": {
+        "addCard": "china_night_operation"
+      },
+      "enabledInC2a": true,
+      "weightConditions": [
+        {
+          "if": "majorBattleHappened",
+          "weight": 2
+        }
+      ]
+    }
+  ]
+}

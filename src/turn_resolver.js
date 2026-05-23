@@ -13,6 +13,7 @@
 
 import { addGauge, payCost, resetTurnState } from "./state.js";
 import { turnStartDraw } from "./deck_state.js";
+import { applyPerTurnPersistentEffects as applyPersistentPerTurnGain } from "./reward_system.js";
 import {
   LANDING_STAGES,
   advanceLandingStage,
@@ -322,6 +323,10 @@ function findCounterplay(state, sourceCard, cardIndex) {
 // ---------------------------------------------------------------------
 
 export function phaseInformation(state) {
+  // v0.4.0-c2-b1: 매 턴 시작 시 persistent 보상의 perTurnGain 적용
+  // (snapshot은 perTurnGain 적용 *후* 게이지로 찍음 — 사용자에게는 그게 "이번 턴 시작 게이지")
+  const perTurnApplied = applyPersistentPerTurnGain(state);
+
   const snapshot = { ...state.gauges };
   // v0.4.0-b: DAY 요약용 province 스냅샷 (controlStage/landingStage만 가벼운 복사)
   const provincesSnapshot = Object.fromEntries(
@@ -336,8 +341,21 @@ export function phaseInformation(state) {
     phase: 1,
     name: "information",
     snapshot,
-    provincesSnapshot
+    provincesSnapshot,
+    perTurnApplied
   });
+
+  // 사용자 로그에 perTurnGain 한 줄 요약
+  if (perTurnApplied.length && state.thisTurn?.operationLog) {
+    for (const a of perTurnApplied) {
+      const parts = Object.entries(a.details)
+        .filter(([k, v]) => v.delta !== 0)
+        .map(([k, v]) => `${k} ${v.delta > 0 ? "+" : ""}${v.delta}`);
+      if (parts.length) {
+        state.thisTurn.operationLog.push(`보상 효과 (${a.rewardName}): ${parts.join(", ")}`);
+      }
+    }
+  }
 
   // ---- v0.3.6: 턴 시작 드로우 ----
   // 1턴은 시작 손패 4장이 이미 있으므로 skip, 2턴부터 매턴 2장 드로우 + 한도 5장 적용
