@@ -135,4 +135,57 @@ if (issues.length) {
 }
 console.log("\nturn_resolver smoke test passed");
 
+// =====================================================================
+// v0.4.0-c2-b3-2: nightOpDefenseDebuff는 야간 작전 카드에만 적용
+// =====================================================================
+console.log("\n[c2-b3-2 nightOpDefenseDebuff 적용 범위]");
+
+import { applyEffects } from "./turn_resolver.js";
+
+// case A: 보상 없는 상태, 야간 작전 카드 효과 적용 → defenseDebuff = +2 (카드 기본)
+const stA = { thisTurn: { defenseDebuff: 0, operationLog: [] }, persistent: { rewards: [] }, log: [], turn: 1 };
+applyEffects(stA, { taiwanDefenseValueDebuff: 2 }, { side: "china", source: { id: "china_night_operation", name: "야간 작전" } });
+if (stA.thisTurn.defenseDebuff !== 2) {
+  console.error(`FAIL: 보상 없음 야간 작전 — debuff ${stA.thisTurn.defenseDebuff}, expected 2`); process.exit(1);
+}
+console.log(`  ✓ 보상 없음 + 야간 작전: defenseDebuff = ${stA.thisTurn.defenseDebuff} (카드 기본 +2만)`);
+
+// case B: 보상 있는 상태, 야간 작전 카드 효과 → +2 카드 + +1 보상 = 3
+const stB = { thisTurn: { defenseDebuff: 0, operationLog: [] }, persistent: { rewards: [
+  { id: "cn_night_op_efficiency", name: "야간 작전 효율화", applyTiming: "persistent", effects: { nightOpDefenseDebuff: 1 } }
+] }, log: [], turn: 1 };
+applyEffects(stB, { taiwanDefenseValueDebuff: 2 }, { side: "china", source: { id: "china_night_operation", name: "야간 작전" } });
+if (stB.thisTurn.defenseDebuff !== 3) {
+  console.error(`FAIL: 보상 + 야간 작전 — debuff ${stB.thisTurn.defenseDebuff}, expected 3`); process.exit(1);
+}
+console.log(`  ✓ 보상 + 야간 작전: defenseDebuff = ${stB.thisTurn.defenseDebuff} (카드 +2 + 영구 +1)`);
+// operation log에 영구 보상 적용 메시지
+if (!stB.thisTurn.operationLog.some(l => l.includes("야간 작전 효율화"))) {
+  console.error(`FAIL: 영구 보상 적용 로그 누락. log: ${stB.thisTurn.operationLog.join("|")}`); process.exit(1);
+}
+console.log(`  ✓ operationLog: ${stB.thisTurn.operationLog[0]}`);
+
+// case C: 보상 있는 상태인데 *다른 카드*의 같은 효과 → 보상 미적용
+const stC = { thisTurn: { defenseDebuff: 0, operationLog: [] }, persistent: { rewards: [
+  { id: "cn_night_op_efficiency", name: "야간 작전 효율화", applyTiming: "persistent", effects: { nightOpDefenseDebuff: 1 } }
+] }, log: [], turn: 1 };
+// 다른 가상의 카드가 같은 키를 쓴다고 가정
+applyEffects(stC, { taiwanDefenseValueDebuff: 2 }, { side: "china", source: { id: "china_other_card", name: "다른 카드" } });
+if (stC.thisTurn.defenseDebuff !== 2) {
+  console.error(`FAIL: 다른 카드는 영구 보상 미적용이어야. debuff ${stC.thisTurn.defenseDebuff}, expected 2`); process.exit(1);
+}
+console.log(`  ✓ 다른 카드 + 보상 있음: defenseDebuff = ${stC.thisTurn.defenseDebuff} (보상 미적용)`);
+
+// case D: source 없는 효과 (예: 이벤트 직접 적용) → 보상 미적용
+const stD = { thisTurn: { defenseDebuff: 0, operationLog: [] }, persistent: { rewards: [
+  { id: "cn_night_op_efficiency", name: "야간 작전 효율화", applyTiming: "persistent", effects: { nightOpDefenseDebuff: 1 } }
+] }, log: [], turn: 1 };
+applyEffects(stD, { taiwanDefenseValueDebuff: 2 }, { side: "global" });
+if (stD.thisTurn.defenseDebuff !== 2) {
+  console.error(`FAIL: source 없으면 보상 미적용이어야. debuff ${stD.thisTurn.defenseDebuff}`); process.exit(1);
+}
+console.log(`  ✓ source 없음 + 보상 있음: defenseDebuff = ${stD.thisTurn.defenseDebuff} (보상 미적용)`);
+
+console.log("✓ c2-b3-2 nightOpDefenseDebuff 검증 통과");
+
 Math.random = origRandom;

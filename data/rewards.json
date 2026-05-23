@@ -1,5 +1,5 @@
 {
-  "version": "0.4.0-c2-b3-1",
+  "version": "0.4.0-c2-b3-2",
   "rewards": [
     {
       "id": "tw_reserve_remobilize",
@@ -440,7 +440,15 @@
       "enabledInC1": false,
       "effects": {
         "nightOpDefenseDebuff": 1
-      }
+      },
+      "enabledInC2b3": true,
+      "weightConditions": [
+        {
+          "if": "chinaTempoBelow",
+          "value": 60,
+          "weight": 2
+        }
+      ]
     },
     {
       "id": "cn_supply_hub_expand",

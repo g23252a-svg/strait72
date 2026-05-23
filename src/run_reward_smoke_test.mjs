@@ -237,32 +237,55 @@ if (cn_c2b2.length !== 9) {
 }
 console.log(`  ✓ 대만 11개 (defenseValueBonus 2개 추가), 중국 9개 (b2 미활성)`);
 
-// v0.4.0-c2-b3-1: 중국 풀에 rangedAttackBonus 1개 추가 → 10개
+// v0.4.0-c2-b3-1, c2-b3-2: 중국 풀에 rangedAttackBonus + nightOpDefenseDebuff 2개 추가 → 11개
 const tw_c2b3 = rewardPoolForSide(rewards, "taiwan");
 const cn_c2b3 = rewardPoolForSide(rewards, "china");
-console.log(`c2-b3-1 풀: 대만 ${tw_c2b3.length}개, 중국 ${cn_c2b3.length}개`);
+console.log(`c2-b3 풀: 대만 ${tw_c2b3.length}개, 중국 ${cn_c2b3.length}개`);
 if (tw_c2b3.length !== 11) {
-  console.error(`FAIL: 대만 c2-b3-1 풀 11개 아님 (대만 b3 없음), got ${tw_c2b3.length}`); process.exit(1);
+  console.error(`FAIL: 대만 c2-b3 풀 11개 아님 (대만 b3 없음), got ${tw_c2b3.length}`); process.exit(1);
 }
-if (cn_c2b3.length !== 10) {
-  console.error(`FAIL: 중국 c2-b3-1 풀 10개 아님 (missile 1개 추가), got ${cn_c2b3.length}`); process.exit(1);
+if (cn_c2b3.length !== 11) {
+  console.error(`FAIL: 중국 c2-b3 풀 11개 아님 (missile + night_op 추가), got ${cn_c2b3.length}`); process.exit(1);
 }
-// b3 활성화된 1개만 — missile_range_extend
 const missile = cn_c2b3.find(r => r.id === "cn_missile_range_extend");
-if (!missile) {
-  console.error(`FAIL: cn_missile_range_extend가 c2-b3-1 풀에 없음`); process.exit(1);
-}
-console.log(`  ✓ 중국 10개 (rangedAttackBonus 1개 추가: ${missile.name})`);
+const nightOp = cn_c2b3.find(r => r.id === "cn_night_op_efficiency");
+if (!missile) { console.error(`FAIL: cn_missile_range_extend 없음`); process.exit(1); }
+if (!nightOp) { console.error(`FAIL: cn_night_op_efficiency 없음`); process.exit(1); }
+console.log(`  ✓ 중국 11개 (rangedAttackBonus + nightOpDefenseDebuff 추가)`);
 
-// 다른 b3 후보들은 아직 풀에 들어오지 않아야 (좁게 활성화 검증)
-const otherB3 = ["cn_night_op_efficiency", "tw_supply_rerouting", "cn_information_control"];
+// 아직 비활성: tw_supply_rerouting, cn_information_control
+const otherB3 = ["tw_supply_rerouting", "cn_information_control"];
 for (const id of otherB3) {
   const inPool = [...tw_c2b3, ...cn_c2b3].find(r => r.id === id);
   if (inPool) {
-    console.error(`FAIL: ${id}는 c2-b3-1에서 활성화되면 안 됨`); process.exit(1);
+    console.error(`FAIL: ${id}는 c2-b3-2에서 활성화되면 안 됨`); process.exit(1);
   }
 }
-console.log(`  ✓ 다른 b3 보상 3개 (야간/감쇄/정보)는 아직 비활성`);
+console.log(`  ✓ 감쇄형 보상 2개 (보급 우회/정보 통제)는 아직 비활성`);
+
+// c2-b3-2: computePersistentNightOpDefenseDebuff 동작
+import { computePersistentNightOpDefenseDebuff } from "./reward_system.js";
+const nightTestState = { gauges: {}, persistent: { rewards: [] }, log: [], turn: 1 };
+if (computePersistentNightOpDefenseDebuff(nightTestState) !== 0) {
+  console.error(`FAIL: 빈 state에서 0 아님`); process.exit(1);
+}
+applyReward(nightTestState, nightOp);
+const debuffAfter = computePersistentNightOpDefenseDebuff(nightTestState);
+if (debuffAfter !== 1) {
+  console.error(`FAIL: nightOpDefenseDebuff 1 아님, got ${debuffAfter}`); process.exit(1);
+}
+console.log(`  ✓ computePersistentNightOpDefenseDebuff: 빈 0, 활성 1`);
+
+// amount cap 검증
+const fakeNightState = {
+  gauges: {}, persistent: { rewards: [
+    { id: "fake_night_huge", applyTiming: "persistent", effects: { nightOpDefenseDebuff: 5 } }
+  ] }, log: [], turn: 1
+};
+if (computePersistentNightOpDefenseDebuff(fakeNightState) !== 1) {
+  console.error(`FAIL: amount=5도 cap 1 안 됨`); process.exit(1);
+}
+console.log(`  ✓ amount=5 보상도 cap 1로 강제`);
 
 // v0.4.0-c2-b2.1: 항만 방어 공사는 지룽/가오슝 (타이난 X)
 const defTestState = { gauges: {}, persistent: { rewards: [], provinces: {} }, log: [], turn: 1 };

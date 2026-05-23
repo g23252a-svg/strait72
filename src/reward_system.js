@@ -179,6 +179,10 @@ export function describeRewardApplication(reward, result, state = null) {
       // v0.4.0-c2-b3-1: rangedAttackBonus
       const amount = Math.min(1, Math.max(0, reward.effects.rangedAttackBonus));
       parts.push(`(영구: 원거리 작전 공격력 +${amount})`);
+    } else if (typeof reward.effects?.nightOpDefenseDebuff === "number") {
+      // v0.4.0-c2-b3-2: nightOpDefenseDebuff
+      const amount = Math.min(1, Math.max(0, reward.effects.nightOpDefenseDebuff));
+      parts.push(`(영구: 야간 작전 시 대만 방어 -${amount} 추가)`);
     } else {
       parts.push("(영구 효과 등록 — c2-b3에서 활성)");
     }
@@ -293,6 +297,29 @@ export function collectPersistentRangedAttackContributors(state) {
   if (contributors.length === 0) return null;
   return { total, contributors };
 }
+
+// =====================================================================
+// v0.4.0-c2-b3-2: persistent nightOpDefenseDebuff 계산
+// ---------------------------------------------------------------------
+// 제한:
+//   - amount 1로 캡 (안전망)
+//   - 적용은 turn_resolver의 taiwanDefenseValueDebuff 핸들러에서
+//     ctx.source.id === "china_night_operation"일 때만 호출
+//   - 현재는 cn_night_op_efficiency 1개. 합산 가능.
+// =====================================================================
+export function computePersistentNightOpDefenseDebuff(state) {
+  const rewards = state.persistent?.rewards || [];
+  if (!rewards.length) return 0;
+
+  let total = 0;
+  for (const r of rewards) {
+    if (r.applyTiming !== "persistent") continue;
+    const amount = r.effects?.nightOpDefenseDebuff;
+    if (typeof amount !== "number") continue;
+    total += Math.min(1, Math.max(0, amount));
+  }
+  return total;
+}
 // ---------------------------------------------------------------------
 // 정책 (사용자 명세 그대로):
 //   - base 10
@@ -330,6 +357,11 @@ export function scoreRewardUtility(reward, state, dayReport, side, dayNumber, op
       // 매 ranged 작전마다 효과 발생. perTurnGain보다 보수적 계수(1.2)로 시작.
       const amount = Math.min(1, Math.max(0, reward.effects.rangedAttackBonus));
       score += turnsLeft * amount * 1.2;
+    } else if (typeof reward.effects?.nightOpDefenseDebuff === "number") {
+      // v0.4.0-c2-b3-2: nightOpDefenseDebuff — 야간 작전 카드 시에만 발동
+      // 발동 빈도가 ranged보다 더 적음 (특정 카드 1장). 계수 0.6.
+      const amount = Math.min(1, Math.max(0, reward.effects.nightOpDefenseDebuff));
+      score += turnsLeft * amount * 0.6;
     }
   }
 

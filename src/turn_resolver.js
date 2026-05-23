@@ -13,7 +13,10 @@
 
 import { addGauge, payCost, resetTurnState } from "./state.js";
 import { turnStartDraw } from "./deck_state.js";
-import { applyPerTurnPersistentEffects as applyPersistentPerTurnGain } from "./reward_system.js";
+import {
+  applyPerTurnPersistentEffects as applyPersistentPerTurnGain,
+  computePersistentNightOpDefenseDebuff
+} from "./reward_system.js";
 import {
   LANDING_STAGES,
   advanceLandingStage,
@@ -78,8 +81,16 @@ const EFFECT_HANDLERS = {
   attackBonus: (s, v, ctx) => {
     s.thisTurn.attackBonus[ctx.side] += v;
   },
-  taiwanDefenseValueDebuff: (s, v) => {
+  taiwanDefenseValueDebuff: (s, v, ctx) => {
     s.thisTurn.defenseDebuff += v;
+    // v0.4.0-c2-b3-2: 야간 작전 카드일 때만 persistent nightOpDefenseDebuff 추가 (좁은 적용)
+    if (ctx?.source?.id === "china_night_operation") {
+      const bonus = computePersistentNightOpDefenseDebuff(s);
+      if (bonus > 0) {
+        s.thisTurn.defenseDebuff += bonus;
+        s.thisTurn.operationLog.push(`야간 작전 효율화 영구 보상 적용: 방어 -${bonus} 추가`);
+      }
+    }
   },
 
   // ---- 상륙 진척 (target이 필요) ----
