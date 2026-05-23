@@ -239,6 +239,14 @@ export function suggestChinaAxis(state, axes) {
   const northProgress = landingProgressTotal(state, ["keelung", "taoyuan"]);
   const southProgress = landingProgressTotal(state, ["kaohsiung", "tainan"]);
 
+  // v0.3.6: 유효 타깃 없는 축 감점.
+  // 남부 후보가 전부 china_control이면 남부 상륙 점수 대폭 감점,
+  // 북부 후보가 전부 china_control이면 북부 압박도 감점.
+  const isControlled = (id) => state.provinces?.[id]?.controlStage === "china_control";
+  const allControlled = (ids) => ids.length > 0 && ids.every(isControlled);
+  const southAllDone = allControlled(["kaohsiung", "tainan"]);
+  const northAllDone = allControlled(["keelung", "taoyuan"]);
+
   for (const axis of axes) {
     let s;
     if (axis.id === "north_pressure") {
@@ -246,11 +254,13 @@ export function suggestChinaAxis(state, axes) {
       s += northProgress * 2.6;
       s += Math.max(0, 100 - (g.taiwanGovernment || 100)) * 0.04;
       s -= (g.usIntervention || 0) * 0.025;
+      if (northAllDone) s -= 10;  // 모든 북부 후보 점령됨 → 무의미
     } else if (axis.id === "south_landing") {
       s = 6.4;
       s += southProgress * 2.5;
       s += (g.chinaSupply || 0) * 0.018;
       s += Math.max(0, (g.taiwanSupply || 80) - 45) * 0.025;
+      if (southAllDone) s -= 10;  // 모든 남부 후보 점령됨 → 무의미
     } else if (axis.id === "naval_blockade") {
       // 기존 로직은 대만 보급이 낮을 때만 봉쇄를 고평가했다.
       // 그러나 봉쇄는 보급을 낮추기 위해 쓰는 축이므로 보급이 높을 때도 가치가 있어야 한다.

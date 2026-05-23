@@ -15,6 +15,7 @@ import fs from "node:fs";
 import { createInitialState, buildCardIndex, buildAxisIndex } from "./state.js";
 import { runTurn } from "./turn_resolver.js";
 import { GAME_RULES, formatGameTime, formatTurnCounter, chinaHoursRemaining } from "./game_rules.js";
+import { initializeDecks } from "./deck_state.js";
 import {
   suggestChinaAxis,
   suggestTaiwanFocus,
@@ -73,7 +74,7 @@ function card(id) {
 }
 
 function getHandCards(state, side) {
-  const ids = side === "china" ? state.hands.china : state.hands.taiwan;
+  const ids = state.decks?.[side]?.hand || [];
   return ids.map((id) => card(id)).filter(Boolean);
 }
 
@@ -226,6 +227,7 @@ function runSingle(seed, { collectCurve = false } = {}) {
   const state = createInitialState({
     provinces, gameRules: GAME_RULES, axes, cardsChina, cardsTaiwan, events
   });
+  initializeDecks(state, cardsChina, cardsTaiwan);
 
   const curve = [];
   while (!state.outcome && state.turn <= GAME_RULES.totalTurns) {

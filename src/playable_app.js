@@ -11,6 +11,7 @@ import { suggestChinaAxis, suggestTaiwanFocus } from "./target_selector.js";
 import { drawGameCanvas, hitTestProvince } from "./ui_canvas.js";
 import { GAME_RULES, BUILD_TAG, BUILD_DATE, BUILD_FULL, TOTAL_GAME_HOURS, formatGameTime, formatTurnCounter, chinaHoursRemaining } from "./game_rules.js";
 import { AXIS_DEFAULT_TARGETS, chooseBestTarget } from "./combat_resolver.js";
+import { initializeDecks } from "./deck_state.js";
 
 const DATA_PATHS = {
   axes: "./data/axes.json",
@@ -32,7 +33,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.3.5";
+const EXPECTED_BUILD = "v0.3.6";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -135,6 +136,7 @@ function resetGame() {
     cardsTaiwan: data.cardsTaiwan,
     events: data.events
   });
+  initializeDecks(state, data.cardsChina, data.cardsTaiwan);
   selectedProvince = "keelung";
   fillSelectors();
   renderCards();
@@ -209,8 +211,25 @@ function fillSelectors() {
 }
 
 function renderCards() {
-  dom.chinaCards.innerHTML = data.cardsChina.map(cardCheckHtml).join("");
-  dom.taiwanCards.innerHTML = data.cardsTaiwan.map(cardCheckHtml).join("");
+  const handCards = side => {
+    const hand = state.decks?.[side]?.hand || [];
+    return hand
+      .map(id => indices.cardIndex.get(id))
+      .filter(Boolean);
+  };
+  dom.chinaCards.innerHTML = renderCardsList("china", handCards("china"));
+  dom.taiwanCards.innerHTML = renderCardsList("taiwan", handCards("taiwan"));
+}
+
+function renderCardsList(side, cards) {
+  const d = state.decks?.[side];
+  const status = d
+    ? `<div class="hand-status">손패 ${d.hand.length}장 · 덱 ${d.deck.length}장 · 버림 ${d.discard.length}장</div>`
+    : "";
+  if (!cards.length) {
+    return status + `<div class="empty-hand">손패가 비었습니다. 다음 턴 시작 시 ${2}장 드로우됩니다.</div>`;
+  }
+  return status + cards.map(cardCheckHtml).join("");
 }
 
 function cardCheckHtml(card) {
@@ -269,7 +288,9 @@ function clearCardChecks() {
 }
 
 function autoPickCards(side, context) {
-  const cards = side === "china" ? data.cardsChina : data.cardsTaiwan;
+  // v0.3.6: 전체 카드 풀이 아닌 현재 손패에서만 선택
+  const handIds = state.decks?.[side]?.hand || [];
+  const cards = handIds.map(id => indices.cardIndex.get(id)).filter(Boolean);
   const selector = side === "china" ? "#chinaCards input" : "#taiwanCards input";
 
   const recent = recentUiPicks[side] || [];

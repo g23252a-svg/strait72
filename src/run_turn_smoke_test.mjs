@@ -10,6 +10,7 @@
 
 import fs from "node:fs";
 import { createInitialState, buildCardIndex, buildAxisIndex } from "./state.js";
+import { initializeDecks } from "./deck_state.js";
 import { runTurn, checkVictoryConditions } from "./turn_resolver.js";
 import { GAME_RULES, formatGameTime, formatTurnCounter, chinaHoursRemaining } from "./game_rules.js";
 
@@ -27,6 +28,7 @@ const indices = { cardIndex, axisIndex, events };
 const state = createInitialState({
   provinces, gameRules: GAME_RULES, axes, cardsChina, cardsTaiwan, events
 });
+initializeDecks(state, cardsChina, cardsTaiwan);
 
 // 시드 (확률 이벤트 재현용 - 매번 다른 결과 보고 싶으면 주석 처리)
 let seed = 42;

@@ -9,6 +9,7 @@
 
 import fs from "node:fs";
 import { createInitialState, buildCardIndex, buildAxisIndex } from "./state.js";
+import { initializeDecks } from "./deck_state.js";
 import { runTurn } from "./turn_resolver.js";
 import { GAME_RULES } from "./game_rules.js";
 
@@ -26,6 +27,7 @@ const indices = { cardIndex, axisIndex, events };
 const state = createInitialState({
   provinces, gameRules: GAME_RULES, axes, cardsChina, cardsTaiwan, events
 });
+initializeDecks(state, cardsChina, cardsTaiwan);
 
 // 재현 가능한 2d6 판정
 let seed = 42;
@@ -86,6 +88,7 @@ if (failureCount < 1) {
   const failureProbe = createInitialState({
     provinces, gameRules: GAME_RULES, axes, cardsChina, cardsTaiwan, events
   });
+  initializeDecks(failureProbe, cardsChina, cardsTaiwan);
   failureProbe.gauges.chinaTempo = 20;
   failureProbe.gauges.chinaSupply = 20;
   failureProbe.provinces.keelung.defenseValueModifier = 12;

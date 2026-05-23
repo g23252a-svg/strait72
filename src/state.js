@@ -144,10 +144,9 @@ export function createInitialState({ provinces, gameRules, axes, cardsChina, car
 
     provinces: provincesById,
 
-    hands: {
-      china: cardsChina.map((c) => c.id),
-      taiwan: cardsTaiwan.map((c) => c.id)
-    },
+    // decks 구조는 initializeDecks(state, ...)로 별도 초기화한다 (v0.3.6+)
+    // 호환을 위해 hands 필드는 비워둠 (deprecated, 모든 참조는 state.decks로 옮김)
+    decks: null,
 
     // ---- 이번 턴 임시 상태 ----
     thisTurn: {

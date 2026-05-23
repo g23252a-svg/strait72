@@ -12,6 +12,7 @@
 // =====================================================================
 
 import { addGauge, payCost, resetTurnState } from "./state.js";
+import { turnStartDraw } from "./deck_state.js";
 import {
   LANDING_STAGES,
   advanceLandingStage,
@@ -299,7 +300,8 @@ function markEventTriggered(state, event) {
  * "axis:<id>" 표기도 지원.
  */
 function findCounterplay(state, sourceCard, cardIndex) {
-  const opponentHand = sourceCard.side === "china" ? state.hands.taiwan : state.hands.china;
+  const opponentSide = sourceCard.side === "china" ? "taiwan" : "china";
+  const opponentHand = state.decks?.[opponentSide]?.hand || [];
   for (const cardId of opponentHand) {
     const card = cardIndex.get(cardId);
     if (!card || card.type !== "counterplay") continue;
@@ -322,6 +324,25 @@ function findCounterplay(state, sourceCard, cardIndex) {
 export function phaseInformation(state) {
   const snapshot = { ...state.gauges };
   state.log.push({ turn: state.turn, phase: 1, name: "information", snapshot });
+
+  // ---- v0.3.6: 턴 시작 드로우 ----
+  // 1턴은 시작 손패 4장이 이미 있으므로 skip, 2턴부터 매턴 2장 드로우 + 한도 5장 적용
+  if (state.decks && state.turn > 1) {
+    const before = {
+      china: { hand: state.decks.china.hand.length, deck: state.decks.china.deck.length },
+      taiwan: { hand: state.decks.taiwan.hand.length, deck: state.decks.taiwan.deck.length }
+    };
+    const drawn = turnStartDraw(state, { skipFirstTurn: false });
+    const after = {
+      china: { hand: state.decks.china.hand.length, deck: state.decks.china.deck.length, discard: state.decks.china.discard.length },
+      taiwan: { hand: state.decks.taiwan.hand.length, deck: state.decks.taiwan.deck.length, discard: state.decks.taiwan.discard.length }
+    };
+    state.log.push({
+      turn: state.turn, phase: 1, name: "deck_draw",
+      drawn, before, after
+    });
+  }
+
   return state;
 }
 
@@ -429,8 +450,12 @@ export function phaseOperationResolution(state, cardIndex, axisIndex) {
         targetIds: targets
       });
       applyEffects(state, counter.effects, { side: "taiwan", resolvedTargets: [] });
-      // 카운터 카드도 대만 손에서 소비
-      state.hands.taiwan = state.hands.taiwan.filter((id) => id !== counter.id);
+      // 카운터 카드도 대만 손에서 소비 → discard
+      const dt = state.decks?.taiwan;
+      if (dt) {
+        dt.hand = dt.hand.filter((id) => id !== counter.id);
+        dt.discard.push(counter.id);
+      }
       state.thisTurn.operationLog.push(`카운터플레이: ${card.name} → ${counter.name}`);
     } else {
       resolveOperationEffects(state, {
@@ -453,9 +478,19 @@ export function phaseOperationResolution(state, cardIndex, axisIndex) {
     state.thisTurn.operationLog.push(`대만 카드: ${card.name}`);
   }
 
-  // 4. 손에서 사용 카드 제거 (카운터플레이로 이미 빠진 카드 제외)
-  state.hands.china = state.hands.china.filter((id) => !state.thisTurn.chinaPlayed.includes(id));
-  state.hands.taiwan = state.hands.taiwan.filter((id) => !state.thisTurn.taiwanPlayed.includes(id));
+  // 4. 손에서 사용 카드 제거 → discard로 이동 (카운터플레이로 이미 빠진 카드 제외)
+  const dc = state.decks?.china;
+  const dt = state.decks?.taiwan;
+  if (dc) {
+    const played = state.thisTurn.chinaPlayed.filter((id) => dc.hand.includes(id));
+    dc.hand = dc.hand.filter((id) => !played.includes(id));
+    dc.discard.push(...played);
+  }
+  if (dt) {
+    const played = state.thisTurn.taiwanPlayed.filter((id) => dt.hand.includes(id));
+    dt.hand = dt.hand.filter((id) => !played.includes(id));
+    dt.discard.push(...played);
+  }
 
   state.log.push({
     turn: state.turn, phase: 4, name: "operation_resolution",

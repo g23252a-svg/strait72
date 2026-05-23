@@ -7,6 +7,7 @@
 
 import fs from "node:fs";
 import { createInitialState, buildCardIndex, buildAxisIndex } from "./state.js";
+import { initializeDecks } from "./deck_state.js";
 import { runTurn } from "./turn_resolver.js";
 import { GAME_RULES } from "./game_rules.js";
 
@@ -25,6 +26,7 @@ const state = createInitialState({
   cardsTaiwan,
   events
 });
+initializeDecks(state, cardsChina, cardsTaiwan);
 
 state.gauges.usIntervention = 99;
 

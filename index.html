@@ -232,6 +232,28 @@
     .card-check span { color: var(--muted); display: block; line-height: 1.35; }
     input[type=checkbox] { margin-top: 2px; }
 
+    /* v0.3.6 손패 상태 헤더 */
+    .hand-status {
+      font-size: 10.5px;
+      color: var(--muted);
+      letter-spacing: .3px;
+      padding: 3px 8px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid rgba(255,255,255,.06);
+      border-radius: 8px;
+      margin-bottom: 4px;
+      text-align: center;
+      font-family: monospace;
+    }
+    .empty-hand {
+      font-size: 11.5px;
+      color: var(--muted);
+      padding: 12px 8px;
+      text-align: center;
+      border: 1px dashed rgba(255,255,255,.1);
+      border-radius: 8px;
+    }
+
     footer {
       grid-column: 1 / 4;
       display: grid;
@@ -417,6 +439,6 @@
     </footer>
   </div>
 
-  <script type="module" src="./src/playable_app.js?v=035-20260523"></script>
+  <script type="module" src="./src/playable_app.js?v=036-20260523"></script>
 </body>
 </html>

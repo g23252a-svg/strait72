@@ -11,6 +11,7 @@
 
 import fs from "node:fs";
 import { createInitialState, buildCardIndex, buildAxisIndex } from "./state.js";
+import { initializeDecks } from "./deck_state.js";
 import {
   selectChinaAttackTarget,
   selectTaiwanDefenseTargets,
@@ -32,6 +33,7 @@ const events = JSON.parse(fs.readFileSync(new URL("events_global.json", dataDir)
 const state = createInitialState({
   provinces, gameRules: GAME_RULES, axes, cardsChina, cardsTaiwan, events
 });
+initializeDecks(state, cardsChina, cardsTaiwan);
 const cardIndex = buildCardIndex(cardsChina, cardsTaiwan);
 const axisIndex = buildAxisIndex(axes);
 
