@@ -136,3 +136,64 @@ if (issues.length) {
 
 console.log("combat_resolver smoke test passed");
 Math.random = originalRandom;
+
+// =====================================================================
+// v0.4.0-c2-b2.1: 전투 로그 breakdown 검증
+// 영구 방어 보상이 있는 상태에서 resolveCombatOperation 결과의
+// defenseRewardBonus 및 formatCombatLog 출력이 정확한지
+// =====================================================================
+import { resolveCombatOperation, formatCombatLog } from "./combat_resolver.js";
+
+console.log("\n[c2-b2.1 전투 로그 breakdown 검증]");
+const bdState = createInitialState({ provinces, gameRules: GAME_RULES, axes, cardsChina, cardsTaiwan, events });
+// 항만 방어 공사: 지룽/가오슝 +1
+bdState.persistent.rewards = [{
+  id: "tw_port_fortification",
+  name: "항만 방어 공사",
+  applyTiming: "persistent",
+  effects: { defenseValueBonus: { regions: ["keelung", "kaohsiung"], amount: 1 } }
+}];
+
+// 가오슝 공격 (deterministic)
+let _seed = 99;
+const fixedRng = () => { _seed = (_seed * 1664525 + 1013904223) >>> 0; return (_seed >>> 0) / 0x100000000; };
+const result = resolveCombatOperation(bdState, {
+  source: { id: "south_landing_prep", name: "남부 상륙 준비", type: "attack", preferredAxis: "south_landing" },
+  axis: { id: "south_landing", name: "남부 상륙" },
+  targetId: "kaohsiung",
+  randomFn: fixedRng
+});
+
+if (!result.defenseRewardBonus) {
+  console.error(`FAIL: result.defenseRewardBonus null`); process.exit(1);
+}
+if (result.defenseRewardBonus.total !== 1) {
+  console.error(`FAIL: 가오슝 영구 방어 보너스 total ${result.defenseRewardBonus.total}, expected 1`); process.exit(1);
+}
+if (result.defenseRewardBonus.contributors[0].rewardName !== "항만 방어 공사") {
+  console.error(`FAIL: contributor 이름 부정확`); process.exit(1);
+}
+console.log(`  ✓ resolveCombatOperation result.defenseRewardBonus: total=1, contributors=[항만 방어 공사]`);
+
+const log = formatCombatLog(result);
+if (!log.includes("영구 방어 +1: 항만 방어 공사")) {
+  console.error(`FAIL: formatCombatLog에 breakdown 없음. 출력: ${log}`); process.exit(1);
+}
+console.log(`  ✓ formatCombatLog: ${log}`);
+
+// 보상 없는 지역 (타이베이)에서는 defenseRewardBonus null
+const result2 = resolveCombatOperation(bdState, {
+  source: { id: "north_pressure", name: "북부 압박", type: "attack" },
+  targetId: "taipei",
+  randomFn: fixedRng
+});
+if (result2.defenseRewardBonus !== null) {
+  console.error(`FAIL: 보상 영향 없는 지역에서 defenseRewardBonus null이어야`); process.exit(1);
+}
+const log2 = formatCombatLog(result2);
+if (log2.includes("영구 방어")) {
+  console.error(`FAIL: 영향 없는 지역 로그에 breakdown 노출됨: ${log2}`); process.exit(1);
+}
+console.log(`  ✓ 타이베이 (영향 없음): breakdown 미표시`);
+
+console.log("✓ c2-b2.1 combat breakdown 검증 통과");

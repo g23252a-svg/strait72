@@ -59,7 +59,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.4.0-c2-b2";
+const EXPECTED_BUILD = "v0.4.0-c2-b2.1";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -1424,7 +1424,7 @@ function showDayEndModal(dayNumber) {
     const reward = drawnRewards.find(r => r.id === selectedRewardId);
     if (!reward) return;
     const result = applyReward(state, reward);
-    const logLine = describeRewardApplication(reward, result);
+    const logLine = describeRewardApplication(reward, result, state);
     // 다음 턴의 operationLog 또는 state.log에 보상 적용 기록
     if (state.thisTurn?.operationLog) {
       state.thisTurn.operationLog.push(logLine);

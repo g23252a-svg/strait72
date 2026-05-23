@@ -145,7 +145,8 @@ function applyInstantReward(state, reward) {
 }
 
 // 보상 적용 후 로그 메시지 (사용자 노출용)
-export function describeRewardApplication(reward, result) {
+// v0.4.0-c2-b2.1: state에서 provinces 한글명 조회 (없으면 ID 사용)
+export function describeRewardApplication(reward, result, state = null) {
   const parts = [result?.applied === "persistent" ? `보상 활성화: ${reward.name}` : `보상 적용: ${reward.name}`];
   if (result?.applied === "instant" && result.details) {
     const lines = [];
@@ -169,15 +170,25 @@ export function describeRewardApplication(reward, result) {
     } else if (reward.effects?.defenseValueBonus) {
       const def = reward.effects.defenseValueBonus;
       const amount = Math.min(1, Math.max(0, def.amount || 0));
-      const regions = Array.isArray(def.regions) ? def.regions.join(", ") : "지정 지역";
-      parts.push(`(영구: ${regions} 방어력 +${amount})`);
+      // v0.4.0-c2-b2.1: 지역명을 한글로
+      const regionNames = Array.isArray(def.regions)
+        ? def.regions.map(id => provinceNameFromState(state, id)).join(", ")
+        : "지정 지역";
+      parts.push(`(영구: ${regionNames} 방어력 +${amount})`);
     } else {
-      parts.push("(영구 효과 등록 — c2-b2/b3에서 활성)");
+      parts.push("(영구 효과 등록 — c2-b3에서 활성)");
     }
   } else if (result?.applied === "card_added") {
     parts.push(`(${result.cardId} 카드 추가됨)`);
   }
   return parts.join(" ");
+}
+
+// v0.4.0-c2-b2.1: state.provinces에서 한글명 조회 (실패 시 ID)
+function provinceNameFromState(state, provinceId) {
+  if (!state?.provinces) return provinceId;
+  const p = state.provinces[provinceId];
+  return p?.name || provinceId;
 }
 
 // =====================================================================

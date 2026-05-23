@@ -237,28 +237,51 @@ if (cn_c2b2.length !== 9) {
 }
 console.log(`  ✓ 대만 11개 (defenseValueBonus 2개 추가), 중국 9개 (b2 미활성)`);
 
-// 항만 방어 공사: 가오슝/타이난 +1
-const defTestState = { gauges: {}, persistent: { rewards: [] }, log: [], turn: 1 };
+// v0.4.0-c2-b2.1: 항만 방어 공사는 지룽/가오슝 (타이난 X)
+const defTestState = { gauges: {}, persistent: { rewards: [], provinces: {} }, log: [], turn: 1 };
+defTestState.provinces = { kaohsiung: { name: "가오슝" }, keelung: { name: "지룽" }, tainan: { name: "타이난" }, taipei: { name: "타이베이" }, taoyuan: { name: "타오위안" } };
 const port = rewards.find(r => r.id === "tw_port_fortification");
+// 데이터 정합성: 지역이 keelung, kaohsiung인지
+const portRegions = port.effects?.defenseValueBonus?.regions || [];
+if (!portRegions.includes("keelung") || !portRegions.includes("kaohsiung")) {
+  console.error(`FAIL: c2-b2.1 항만 방어 대상이 keelung,kaohsiung 아님: ${portRegions.join(",")}`); process.exit(1);
+}
+if (portRegions.includes("tainan")) {
+  console.error(`FAIL: c2-b2.1 항만 방어에서 tainan 제거 안 됨`); process.exit(1);
+}
+console.log(`  ✓ 항만 방어 대상 지역: ${portRegions.join(", ")} (지룽/가오슝)`);
+
 const portApply = applyReward(defTestState, port);
-const portDescribe = describeRewardApplication(port, portApply);
+const portDescribe = describeRewardApplication(port, portApply, defTestState);
 if (!portDescribe.includes("보상 활성화") || !portDescribe.includes("방어력 +1")) {
   console.error(`FAIL: defenseValueBonus 활성화 로그 부정확: ${portDescribe}`); process.exit(1);
 }
+// v0.4.0-c2-b2.1: 한글 지역명 사용 검증
+if (!portDescribe.includes("지룽") || !portDescribe.includes("가오슝")) {
+  console.error(`FAIL: 보상 활성화 로그가 한글 지역명 사용 안 함: ${portDescribe}`); process.exit(1);
+}
+console.log(`  ✓ 보상 활성화 로그: ${portDescribe}`);
+
 const kaohsiungBonus = computePersistentDefenseBonus(defTestState, "kaohsiung");
+const keelungBonus = computePersistentDefenseBonus(defTestState, "keelung");
+const tainanBonus = computePersistentDefenseBonus(defTestState, "tainan");
 const taipeiBonus = computePersistentDefenseBonus(defTestState, "taipei");
 if (kaohsiungBonus !== 1) { console.error(`FAIL: 가오슝 bonus ${kaohsiungBonus}, expected 1`); process.exit(1); }
-if (taipeiBonus !== 0) { console.error(`FAIL: 타이베이 bonus ${taipeiBonus}, expected 0 (지역 제한)`); process.exit(1); }
-console.log(`  ✓ 항만 방어: 가오슝 +1, 타이베이 +0 (지역 제한 ✓)`);
+if (keelungBonus !== 1) { console.error(`FAIL: 지룽 bonus ${keelungBonus}, expected 1`); process.exit(1); }
+if (tainanBonus !== 0) { console.error(`FAIL: 타이난 bonus ${tainanBonus}, expected 0`); process.exit(1); }
+if (taipeiBonus !== 0) { console.error(`FAIL: 타이베이 bonus ${taipeiBonus}, expected 0`); process.exit(1); }
+console.log(`  ✓ 항만 방어: 가오슝 +1, 지룽 +1, 타이난 +0, 타이베이 +0 (지역 제한 ✓)`);
 
-// 북부 진지 강화 추가: 타이베이 +1
+// 북부 진지 강화 추가: 타이베이 +1, 그리고 지룽은 +2 (항만+북부 둘 다 영향)
 const north = rewards.find(r => r.id === "tw_north_defense_dig_in");
 applyReward(defTestState, north);
 const taipeiAfter = computePersistentDefenseBonus(defTestState, "taipei");
+const keelungAfter = computePersistentDefenseBonus(defTestState, "keelung");
 const kaohsiungAfter = computePersistentDefenseBonus(defTestState, "kaohsiung");
 if (taipeiAfter !== 1) { console.error(`FAIL: 타이베이 +1 (북부 진지) 아님, got ${taipeiAfter}`); process.exit(1); }
+if (keelungAfter !== 2) { console.error(`FAIL: 지룽 +2 (항만+북부 캡) 아님, got ${keelungAfter}`); process.exit(1); }
 if (kaohsiungAfter !== 1) { console.error(`FAIL: 가오슝 변동되면 안 됨, got ${kaohsiungAfter}`); process.exit(1); }
-console.log(`  ✓ 북부 진지: 타이베이 +1, 가오슝 변동 없음`);
+console.log(`  ✓ 북부 진지: 타이베이 +1, 지룽 +2 (항만+북부 누적, 캡 발동), 가오슝 +1 변동 없음`);
 
 // +2 캡 검증 — amount: 5인 가짜 보상으로도 1로 캡되는지
 const capTestState = {

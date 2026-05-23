@@ -131,6 +131,11 @@ export function resolveCombatOperation(state, {
   const attackPower = calculateAttackPower(state, { source, axis, target, roll });
   const defensePower = calculateDefensePower(state, { source, axis, target });
 
+  // v0.4.0-c2-b2.1: 전투 로그용 방어 보상 기여 분리 (지역 공격 한정)
+  const defenseRewardBonus = (target && target.id !== "strait")
+    ? collectPersistentDefenseContributors(state, target.id)
+    : null;
+
   const margin = attackPower - defensePower;
   const success = margin >= 0;
 
@@ -143,12 +148,37 @@ export function resolveCombatOperation(state, {
     roll,
     attackPower,
     defensePower,
+    defenseRewardBonus, // null 또는 { total, contributors: [{rewardName, amount}, ...] }
     margin,
     success,
     grade: gradeMargin(margin)
   };
 
   return result;
+}
+
+// v0.4.0-c2-b2.1: 영구 방어 보상 기여자 수집 (전투 로그 표시용)
+// 같은 지역 +2 캡을 반영하되, 각 기여 보상 이름은 따로 노출.
+function collectPersistentDefenseContributors(state, provinceId) {
+  const rewards = state.persistent?.rewards || [];
+  if (!rewards.length) return null;
+
+  const contributors = [];
+  let raw = 0;
+  for (const r of rewards) {
+    if (r.applyTiming !== "persistent") continue;
+    const def = r.effects?.defenseValueBonus;
+    if (!def || !Array.isArray(def.regions) || !def.regions.includes(provinceId)) continue;
+    const amount = Math.min(1, Math.max(0, def.amount || 0));
+    if (amount > 0) {
+      contributors.push({ rewardName: r.name, amount });
+      raw += amount;
+    }
+  }
+  if (contributors.length === 0) return null;
+  // 캡: 실제 적용된 값은 최대 +2
+  const total = Math.min(2, raw);
+  return { total, raw, contributors };
 }
 
 export function calculateAttackPower(state, { source, axis, target, roll }) {
@@ -284,5 +314,11 @@ function gradeMargin(margin) {
 export function formatCombatLog(result) {
   const mark = result.success ? "성공" : "실패";
   const sign = result.margin >= 0 ? "+" : "";
-  return `${result.sourceName} ${mark}: ${result.targetName} | 공격 ${result.attackPower} vs 방어 ${result.defensePower} | 차이 ${sign}${result.margin} | 주사위 ${result.roll}`;
+  let defenseStr = `방어 ${result.defensePower}`;
+  // v0.4.0-c2-b2.1: 영구 방어 보상 기여 분리 표시
+  if (result.defenseRewardBonus && result.defenseRewardBonus.total > 0) {
+    const names = result.defenseRewardBonus.contributors.map(c => c.rewardName).join(", ");
+    defenseStr += ` (영구 방어 +${result.defenseRewardBonus.total}: ${names})`;
+  }
+  return `${result.sourceName} ${mark}: ${result.targetName} | 공격 ${result.attackPower} vs ${defenseStr} | 차이 ${sign}${result.margin} | 주사위 ${result.roll}`;
 }

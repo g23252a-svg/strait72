@@ -1,5 +1,5 @@
 {
-  "version": "0.4.0-c2-b2",
+  "version": "0.4.0-c2-b2.1",
   "rewards": [
     {
       "id": "tw_reserve_remobilize",
@@ -140,14 +140,14 @@
       "name": "항만 방어 공사",
       "side": "taiwan",
       "category": "defense",
-      "description": "남부 항만 지역의 방어선을 강화합니다.",
+      "description": "지룽/가오슝 주요 항만 지역의 방어선을 강화합니다.",
       "applyTiming": "persistent",
       "enabledInC1": false,
       "effects": {
         "defenseValueBonus": {
           "regions": [
-            "kaohsiung",
-            "tainan"
+            "keelung",
+            "kaohsiung"
           ],
           "amount": 1
         }
@@ -160,8 +160,8 @@
         },
         {
           "if": "provinceLost",
-          "value": "tainan",
-          "weight": 8
+          "value": "keelung",
+          "weight": 6
         }
       ],
       "enabledInC2b2": true
