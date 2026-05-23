@@ -12,6 +12,7 @@ import { drawGameCanvas, hitTestProvince } from "./ui_canvas.js";
 import { GAME_RULES, BUILD_TAG, BUILD_DATE, BUILD_FULL, TOTAL_GAME_HOURS, formatGameTime, formatTurnCounter, chinaHoursRemaining } from "./game_rules.js";
 import { AXIS_DEFAULT_TARGETS, chooseBestTarget } from "./combat_resolver.js";
 import { initializeDecks, DRAW_PER_TURN } from "./deck_state.js";
+import { buildCardTooltipHTML } from "./card_tooltip.js";
 
 const DATA_PATHS = {
   axes: "./data/axes.json",
@@ -33,7 +34,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.3.8d";
+const EXPECTED_BUILD = "v0.3.9";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -191,7 +192,68 @@ function bindEvents() {
     render();
   });
 
+  // v0.3.9: 카드 hover 툴팁
+  bindCardTooltipEvents();
+
   window.addEventListener("resize", render);
+}
+
+// v0.3.9: 카드 hover 시 툴팁 표시
+function bindCardTooltipEvents() {
+  // 단일 글로벌 tooltip 요소 생성
+  let tt = document.getElementById("cardTooltip");
+  if (!tt) {
+    tt = document.createElement("div");
+    tt.id = "cardTooltip";
+    tt.className = "card-tooltip hidden";
+    document.body.appendChild(tt);
+  }
+
+  let currentLabel = null;
+
+  function show(label) {
+    const cardId = label.dataset.cardId;
+    if (!cardId || !indices?.cardIndex) return;
+    const card = indices.cardIndex.get(cardId);
+    if (!card) return;
+    tt.innerHTML = buildCardTooltipHTML(card, state, card.side, data.provinces);
+    tt.classList.remove("hidden");
+
+    // 위치 계산: 카드 오른쪽 우선, 화면 밖이면 왼쪽
+    const rect = label.getBoundingClientRect();
+    const ttRect = tt.getBoundingClientRect();
+    let left = rect.right + 8;
+    if (left + ttRect.width > window.innerWidth - 8) {
+      left = rect.left - ttRect.width - 8;
+    }
+    let top = rect.top;
+    if (top + ttRect.height > window.innerHeight - 8) {
+      top = window.innerHeight - ttRect.height - 8;
+    }
+    tt.style.left = Math.max(8, left) + "px";
+    tt.style.top = Math.max(8, top) + "px";
+  }
+
+  function hide() {
+    tt.classList.add("hidden");
+  }
+
+  document.addEventListener("mouseover", (e) => {
+    const label = e.target.closest?.(".card-check");
+    if (!label || label === currentLabel) return;
+    currentLabel = label;
+    show(label);
+  });
+
+  document.addEventListener("mouseout", (e) => {
+    const label = e.target.closest?.(".card-check");
+    if (!label) return;
+    const movingTo = e.relatedTarget?.closest?.(".card-check");
+    if (label !== movingTo) {
+      if (currentLabel === label) currentLabel = null;
+      if (!movingTo) hide();
+    }
+  });
 }
 
 function fillSelectors() {
@@ -236,7 +298,7 @@ function cardCheckHtml(card) {
   const axis = card.preferredAxis ? ` · ${axisName(card.preferredAxis)}` : "";
   const type = card.type || "card";
   return `
-    <label class="card-check">
+    <label class="card-check" data-card-id="${card.id}">
       <input type="checkbox" value="${card.id}" data-side="${card.side}" />
       <span>
         <strong>${card.name}</strong>
