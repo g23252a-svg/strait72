@@ -1,0 +1,90 @@
+[
+  {
+    "id": "taipei",
+    "name": "타이베이",
+    "type": "capital",
+    "politicalValue": 10,
+    "supplyValue": 4,
+    "defenseValue": 8,
+    "controlStage": "stable_defense",
+    "landingStage": "none",
+    "tags": ["north", "capital", "urban"]
+  },
+  {
+    "id": "keelung",
+    "name": "지룽",
+    "type": "port",
+    "politicalValue": 7,
+    "supplyValue": 8,
+    "defenseValue": 6,
+    "controlStage": "stable_defense",
+    "landingStage": "none",
+    "tags": ["north", "port", "coastal"]
+  },
+  {
+    "id": "taoyuan",
+    "name": "타오위안",
+    "type": "airport",
+    "politicalValue": 7,
+    "supplyValue": 6,
+    "defenseValue": 6,
+    "controlStage": "stable_defense",
+    "landingStage": "none",
+    "tags": ["north", "airport", "coastal"]
+  },
+  {
+    "id": "taichung",
+    "name": "타이중",
+    "type": "city",
+    "politicalValue": 6,
+    "supplyValue": 5,
+    "defenseValue": 5,
+    "controlStage": "stable_defense",
+    "landingStage": "none",
+    "tags": ["central", "urban"]
+  },
+  {
+    "id": "tainan",
+    "name": "타이난",
+    "type": "city",
+    "politicalValue": 5,
+    "supplyValue": 5,
+    "defenseValue": 5,
+    "controlStage": "stable_defense",
+    "landingStage": "none",
+    "tags": ["south", "urban", "coastal"]
+  },
+  {
+    "id": "kaohsiung",
+    "name": "가오슝",
+    "type": "major_port",
+    "politicalValue": 8,
+    "supplyValue": 10,
+    "defenseValue": 7,
+    "controlStage": "stable_defense",
+    "landingStage": "none",
+    "tags": ["south", "port", "industrial", "coastal"]
+  },
+  {
+    "id": "hualien",
+    "name": "화롄",
+    "type": "east_port",
+    "politicalValue": 4,
+    "supplyValue": 6,
+    "defenseValue": 7,
+    "controlStage": "stable_defense",
+    "landingStage": "none",
+    "tags": ["east", "port", "mountain", "coastal"]
+  },
+  {
+    "id": "strait",
+    "name": "대만 해협",
+    "type": "sea_zone",
+    "politicalValue": 0,
+    "supplyValue": 10,
+    "defenseValue": 0,
+    "controlStage": "contested",
+    "landingStage": "none",
+    "tags": ["sea", "blockade"]
+  }
+]

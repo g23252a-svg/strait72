@@ -1,0 +1,158 @@
+{
+  "version": "v0.2",
+  "description": "8개 지역 MVP용 인접 관계 그래프. 직접 상륙 가능 지역과 내륙 진격 가능 경로를 분리한다.",
+  "controlOrder": [
+    "stable_defense",
+    "contested",
+    "coastal_breach",
+    "beachhead_established",
+    "china_control"
+  ],
+  "routeTypes": {
+    "sea_landing": "해협에서 해안 거점으로 상륙을 시도하는 경로",
+    "land": "일반 육상 진격 경로",
+    "mountain": "산악/동부 축 진격 경로. 비용이 높고 방어 보정이 크다"
+  },
+  "routes": [
+    {
+      "id": "strait_to_keelung",
+      "from": "strait",
+      "to": "keelung",
+      "type": "sea_landing",
+      "bidirectional": false,
+      "movementCost": 2,
+      "attackCost": 2,
+      "landingAllowed": true,
+      "preferredAxis": "north_pressure",
+      "notes": "북부 항만 진입로. 지룽 교두보가 열리면 타이베이 압박이 가능해진다."
+    },
+    {
+      "id": "strait_to_taoyuan",
+      "from": "strait",
+      "to": "taoyuan",
+      "type": "sea_landing",
+      "bidirectional": false,
+      "movementCost": 2,
+      "attackCost": 2,
+      "landingAllowed": true,
+      "preferredAxis": "north_pressure",
+      "notes": "북부 공항권 진입로. 성공 시 타이베이와 타이중 양쪽을 압박할 수 있다."
+    },
+    {
+      "id": "strait_to_tainan",
+      "from": "strait",
+      "to": "tainan",
+      "type": "sea_landing",
+      "bidirectional": false,
+      "movementCost": 2,
+      "attackCost": 2,
+      "landingAllowed": true,
+      "preferredAxis": "south_landing",
+      "notes": "남부 도시권 진입로. 가오슝과 타이중 사이의 완충 축이다."
+    },
+    {
+      "id": "strait_to_kaohsiung",
+      "from": "strait",
+      "to": "kaohsiung",
+      "type": "sea_landing",
+      "bidirectional": false,
+      "movementCost": 3,
+      "attackCost": 3,
+      "landingAllowed": true,
+      "preferredAxis": "south_landing",
+      "notes": "대형 항만 거점. 성공 시 중국 보급 보정이 크지만 방어도도 높다."
+    },
+    {
+      "id": "strait_to_hualien",
+      "from": "strait",
+      "to": "hualien",
+      "type": "sea_landing",
+      "bidirectional": false,
+      "movementCost": 4,
+      "attackCost": 4,
+      "landingAllowed": true,
+      "preferredAxis": "south_landing",
+      "specialRoute": true,
+      "notes": "동부 우회 상륙로. MVP에서는 가능하지만 고비용 특수 경로로 취급한다."
+    },
+    {
+      "id": "keelung_to_taipei",
+      "from": "keelung",
+      "to": "taipei",
+      "type": "land",
+      "bidirectional": true,
+      "movementCost": 1,
+      "attackCost": 1,
+      "requiresSourceControlAtLeast": "beachhead_established",
+      "notes": "지룽 교두보 확보 후 수도권 진격로. 타이베이는 직접 상륙 대상이 아니다."
+    },
+    {
+      "id": "taoyuan_to_taipei",
+      "from": "taoyuan",
+      "to": "taipei",
+      "type": "land",
+      "bidirectional": true,
+      "movementCost": 1,
+      "attackCost": 1,
+      "requiresSourceControlAtLeast": "beachhead_established",
+      "notes": "타오위안 확보 후 수도권 서측 압박 경로."
+    },
+    {
+      "id": "taoyuan_to_taichung",
+      "from": "taoyuan",
+      "to": "taichung",
+      "type": "land",
+      "bidirectional": true,
+      "movementCost": 2,
+      "attackCost": 2,
+      "requiresSourceControlAtLeast": "beachhead_established",
+      "notes": "북부 교두보에서 중부로 확장하는 경로."
+    },
+    {
+      "id": "taichung_to_tainan",
+      "from": "taichung",
+      "to": "tainan",
+      "type": "land",
+      "bidirectional": true,
+      "movementCost": 2,
+      "attackCost": 2,
+      "requiresSourceControlAtLeast": "beachhead_established",
+      "notes": "서부 축 중부-남부 연결로."
+    },
+    {
+      "id": "tainan_to_kaohsiung",
+      "from": "tainan",
+      "to": "kaohsiung",
+      "type": "land",
+      "bidirectional": true,
+      "movementCost": 1,
+      "attackCost": 1,
+      "requiresSourceControlAtLeast": "beachhead_established",
+      "notes": "남부 도시권 연결로. 한쪽이 뚫리면 다른 쪽 압박이 빨라진다."
+    },
+    {
+      "id": "taipei_to_hualien",
+      "from": "taipei",
+      "to": "hualien",
+      "type": "mountain",
+      "bidirectional": true,
+      "movementCost": 3,
+      "attackCost": 3,
+      "requiresSourceControlAtLeast": "china_control",
+      "defenderBonus": 2,
+      "notes": "북동부 산악 경로. 장악 후 확장용이며 초반 주공축으로는 비효율적이다."
+    },
+    {
+      "id": "taichung_to_hualien",
+      "from": "taichung",
+      "to": "hualien",
+      "type": "mountain",
+      "bidirectional": true,
+      "movementCost": 3,
+      "attackCost": 3,
+      "requiresSourceControlAtLeast": "china_control",
+      "defenderBonus": 2,
+      "notes": "중부 산악 관통 경로. 동부 전선 확장용 고비용 루트."
+    }
+  ]
+}

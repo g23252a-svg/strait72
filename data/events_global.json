@@ -1,0 +1,243 @@
+[
+  {
+    "id": "global_us_carrier_movement",
+    "name": "미국 항모 이동 발표",
+    "type": "threshold_once",
+    "timing": "start_of_turn",
+    "description": "미국 해군 전개 소식이 공개되며 개입 가능성이 급격히 커진다.",
+    "triggerWhen": {
+      "all": [
+        {
+          "metric": "usIntervention",
+          "gte": 35
+        },
+        {
+          "once": true
+        }
+      ]
+    },
+    "effects": {
+      "usInterventionGain": 10,
+      "chinaPoliticalPressure": 6,
+      "internationalOpinion": 3
+    },
+    "ui": {
+      "severity": "high",
+      "icon": "carrier",
+      "newsTicker": "미국 전개 움직임 포착"
+    }
+  },
+  {
+    "id": "global_japan_security_council",
+    "name": "일본 안보회의 소집",
+    "type": "threshold_once",
+    "timing": "start_of_turn",
+    "description": "일본 정부가 긴급 안보회의를 열고 후방·기지 지원 가능성을 검토한다.",
+    "triggerWhen": {
+      "all": [
+        {
+          "metric": "japanIntervention",
+          "gte": 30
+        },
+        {
+          "once": true
+        }
+      ]
+    },
+    "effects": {
+      "japanInterventionGain": 9,
+      "usInterventionGain": 3,
+      "chinaPoliticalPressure": 4
+    },
+    "ui": {
+      "severity": "medium",
+      "icon": "council",
+      "newsTicker": "일본 긴급 안보회의"
+    }
+  },
+  {
+    "id": "global_korea_nsc_rear_support",
+    "name": "한국 긴급 NSC",
+    "type": "conditional_once",
+    "timing": "start_of_turn",
+    "description": "한국은 직접 참전이 아니라 미군 후방지원 허용 여부를 두고 긴급 협의에 들어간다.",
+    "triggerWhen": {
+      "all": [
+        {
+          "metric": "usIntervention",
+          "gte": 30
+        },
+        {
+          "metric": "koreaRearSupport",
+          "lt": 80
+        },
+        {
+          "once": true
+        }
+      ]
+    },
+    "effects": {
+      "koreaRearSupportGain": 12,
+      "usInterventionGain": 4,
+      "chinaPoliticalPressure": 3
+    },
+    "ui": {
+      "severity": "medium",
+      "icon": "nsc",
+      "newsTicker": "한국, 후방지원 협의 착수"
+    }
+  },
+  {
+    "id": "global_un_emergency_session",
+    "name": "유엔 긴급회의",
+    "type": "conditional_once",
+    "timing": "after_operation_resolution",
+    "description": "국제사회가 긴급회의를 소집하며 외교 압박이 커진다.",
+    "triggerWhen": {
+      "any": [
+        {
+          "metric": "internationalOpinion",
+          "gte": 55
+        },
+        {
+          "metric": "taiwanGovernment",
+          "lte": 55
+        }
+      ],
+      "once": true
+    },
+    "effects": {
+      "internationalOpinion": 8,
+      "chinaPoliticalPressure": 5,
+      "diplomaticPressureModifier": -1
+    },
+    "ui": {
+      "severity": "medium",
+      "icon": "un",
+      "newsTicker": "유엔 긴급회의 소집"
+    }
+  },
+  {
+    "id": "global_market_crash",
+    "name": "세계 증시 폭락",
+    "type": "random_conditional",
+    "timing": "start_of_turn",
+    "description": "해협 위기가 금융시장 충격으로 번지며 중국의 정치적 비용이 커진다.",
+    "triggerWhen": {
+      "all": [
+        {
+          "turnGte": 5
+        },
+        {
+          "probability": 0.18
+        }
+      ],
+      "maxOccurrences": 1
+    },
+    "effects": {
+      "chinaPoliticalPressure": 7,
+      "internationalOpinion": 4,
+      "chinaTempo": -1
+    },
+    "ui": {
+      "severity": "medium",
+      "icon": "market",
+      "newsTicker": "세계 증시 급락"
+    }
+  },
+  {
+    "id": "global_civilian_casualty_report",
+    "name": "민간 피해 보도",
+    "type": "conditional_once",
+    "timing": "after_operation_resolution",
+    "description": "민간 피해 보도가 확산되며 국제 여론과 동맹 개입 압력이 급상승한다.",
+    "triggerWhen": {
+      "all": [
+        {
+          "metric": "taiwanMorale",
+          "lte": 60
+        },
+        {
+          "metric": "internationalOpinion",
+          "gte": 40
+        },
+        {
+          "once": true
+        }
+      ]
+    },
+    "effects": {
+      "internationalOpinion": 12,
+      "usInterventionGain": 8,
+      "japanInterventionGain": 6,
+      "chinaPoliticalPressure": 8
+    },
+    "ui": {
+      "severity": "critical",
+      "icon": "broadcast",
+      "newsTicker": "민간 피해 보도 확산"
+    }
+  },
+  {
+    "id": "global_bad_weather",
+    "name": "해협 기상 악화",
+    "type": "random_recurring",
+    "timing": "start_of_turn",
+    "description": "해협 기상이 악화되어 상륙과 항공 지원이 둔화된다.",
+    "triggerWhen": {
+      "all": [
+        {
+          "turnGte": 2
+        },
+        {
+          "probability": 0.22
+        }
+      ],
+      "cooldownTurns": 3
+    },
+    "duration": 1,
+    "effects": {
+      "weatherPenalty": 2,
+      "landingProgressModifier": -1,
+      "chinaTempo": -1
+    },
+    "ui": {
+      "severity": "low",
+      "icon": "storm",
+      "newsTicker": "해협 기상 악화"
+    }
+  },
+  {
+    "id": "global_backchannel_ceasefire_offer",
+    "name": "비공개 휴전 타진",
+    "type": "conditional_once",
+    "timing": "start_of_turn",
+    "description": "비공개 외교 채널을 통한 휴전 타진이 감지된다. 중국은 시간을 벌 수 있지만 정치적 비용을 감수해야 한다.",
+    "triggerWhen": {
+      "all": [
+        {
+          "metric": "chinaPoliticalPressure",
+          "gte": 60
+        },
+        {
+          "metric": "usIntervention",
+          "gte": 50
+        },
+        {
+          "once": true
+        }
+      ]
+    },
+    "effects": {
+      "usInterventionGainReduction": 6,
+      "japanInterventionGainReduction": 4,
+      "chinaPoliticalPressure": 5,
+      "internationalOpinion": 5
+    },
+    "ui": {
+      "severity": "high",
+      "icon": "backchannel",
+      "newsTicker": "비공개 휴전 타진"
+    }
+  }
+]

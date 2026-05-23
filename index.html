@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>해협의 72시간 - v0.3.2 Playtest UI</title>
+  <style>
+    :root {
+      --bg: #07111f;
+      --panel: rgba(13, 24, 42, 0.92);
+      --panel2: rgba(19, 34, 57, 0.9);
+      --line: rgba(124, 171, 220, 0.22);
+      --text: #eaf3ff;
+      --muted: #8ba4be;
+      --blue: #5aa9ff;
+      --red: #ff5964;
+      --amber: #f5b84b;
+      --green: #4fd18b;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at 50% 0%, rgba(64, 113, 171, 0.24), transparent 32%),
+        linear-gradient(135deg, #05101d 0%, #08172b 52%, #040a13 100%);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .shell {
+      display: grid;
+      grid-template-columns: 320px minmax(520px, 1fr) 320px;
+      grid-template-rows: auto 1fr auto;
+      gap: 12px;
+      padding: 14px;
+      min-height: 100vh;
+    }
+
+    header {
+      grid-column: 1 / 4;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      border: 1px solid var(--line);
+      background: linear-gradient(90deg, rgba(14, 28, 50, .95), rgba(11, 20, 37, .86));
+      border-radius: 18px;
+      box-shadow: 0 20px 70px rgba(0,0,0,.28);
+    }
+
+    .title h1 {
+      margin: 0;
+      font-size: 27px;
+      letter-spacing: -0.03em;
+      line-height: 1;
+    }
+
+    .title span {
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+    }
+
+    .turnline {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      align-items: center;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .chip {
+      border: 1px solid var(--line);
+      padding: 8px 11px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.04);
+    }
+
+    .chip strong { color: var(--text); }
+
+    .reset-top {
+      border-color: rgba(255, 89, 100, .45);
+      color: #ffd5d8;
+      background: rgba(255, 89, 100, .10);
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-weight: 800;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 18px;
+      padding: 14px;
+      box-shadow: 0 20px 70px rgba(0,0,0,.25);
+      min-width: 0;
+    }
+
+    .side-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .side-title small { color: var(--muted); font-weight: 500; }
+
+    .meter {
+      margin: 10px 0 12px;
+    }
+
+    .meter-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 5px;
+    }
+
+    .bar {
+      height: 9px;
+      border-radius: 99px;
+      background: rgba(255,255,255,.07);
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,.06);
+    }
+
+    .bar > i {
+      display: block;
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--blue), #b8dcff);
+      border-radius: 99px;
+      transition: width .25s ease;
+    }
+
+    .bar.red > i { background: linear-gradient(90deg, #ff4654, #ff9aa2); }
+    .bar.amber > i { background: linear-gradient(90deg, #f2b44a, #ffe2a1); }
+    .bar.green > i { background: linear-gradient(90deg, #45c987, #9ef0c1); }
+
+    main.map-wrap {
+      position: relative;
+      min-height: 600px;
+      overflow: hidden;
+    }
+
+    #mapCanvas {
+      width: 100%;
+      height: 620px;
+      display: block;
+      border-radius: 14px;
+      background: #071523;
+      cursor: crosshair;
+    }
+
+    .map-help {
+      position: absolute;
+      left: 24px;
+      bottom: 22px;
+      padding: 9px 12px;
+      font-size: 12px;
+      color: var(--muted);
+      background: rgba(3,8,15,.65);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 12px;
+      backdrop-filter: blur(7px);
+    }
+
+    .controls {
+      display: grid;
+      gap: 10px;
+    }
+
+    label {
+      color: var(--muted);
+      display: grid;
+      gap: 6px;
+      font-size: 12px;
+    }
+
+    select, button {
+      width: 100%;
+      border: 1px solid rgba(143, 185, 232, .22);
+      background: rgba(255,255,255,.055);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 10px 11px;
+      font: inherit;
+    }
+
+    select option { background: #102033; color: var(--text); }
+
+    button {
+      cursor: pointer;
+      font-weight: 800;
+      transition: transform .12s ease, border-color .12s ease, background .12s ease;
+    }
+    button:hover { transform: translateY(-1px); border-color: rgba(122,190,255,.55); background: rgba(90,169,255,.12); }
+    button.primary { background: linear-gradient(135deg, rgba(255, 82, 92, .22), rgba(90, 169, 255, .18)); border-color: rgba(255,255,255,.2); }
+    button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+
+    .cards {
+      display: grid;
+      gap: 8px;
+      max-height: 246px;
+      overflow: auto;
+      padding-right: 3px;
+    }
+
+    .card-check {
+      display: grid;
+      grid-template-columns: 18px 1fr;
+      gap: 8px;
+      padding: 8px;
+      border: 1px solid rgba(255,255,255,.07);
+      border-radius: 12px;
+      background: rgba(255,255,255,.035);
+      color: var(--text);
+      font-size: 12px;
+    }
+    .card-check strong { display: block; font-size: 12px; margin-bottom: 2px; }
+    .card-check span { color: var(--muted); display: block; line-height: 1.35; }
+    input[type=checkbox] { margin-top: 2px; }
+
+    footer {
+      grid-column: 1 / 4;
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 12px;
+    }
+
+    .intervention {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+
+    .log {
+      max-height: 150px;
+      overflow: auto;
+      color: #c7d7e8;
+      font-size: 12px;
+      line-height: 1.5;
+      border-radius: 12px;
+      padding: 10px;
+      background: rgba(0,0,0,.22);
+      border: 1px solid rgba(255,255,255,.06);
+    }
+
+    .log p { margin: 0 0 5px; }
+    .danger { color: var(--red); }
+    .ok { color: var(--green); }
+    .warn { color: var(--amber); }
+
+    /* ── 턴별 로그 블록 ── */
+    .log-turn {
+      border-left: 3px solid rgba(255,255,255,.08);
+      padding: 7px 10px 7px 11px;
+      margin-bottom: 9px;
+      border-radius: 0 8px 8px 0;
+      background: rgba(255,255,255,.02);
+    }
+    .log-turn.current {
+      border-left-color: var(--amber);
+      background: rgba(245,184,75,.07);
+      box-shadow: 0 0 0 1px rgba(245,184,75,.15);
+    }
+    .log-turn-header {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      font-weight: 700;
+      font-size: 11.5px;
+      color: var(--muted);
+      letter-spacing: .3px;
+      margin-bottom: 5px;
+    }
+    .log-turn-header.current { color: var(--amber); font-size: 12.5px; }
+    .log-chip {
+      display: inline-block;
+      padding: 1px 7px;
+      border-radius: 9px;
+      font-size: 10.5px;
+      font-weight: 600;
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.1);
+      color: var(--text);
+    }
+    .log-chip.axis { background: rgba(255,89,100,.16); border-color: rgba(255,89,100,.3); color: #ff9aa3; }
+    .log-chip.focus { background: rgba(90,169,255,.16); border-color: rgba(90,169,255,.3); color: #9cc6ff; }
+    .log-op {
+      font-size: 12px;
+      color: rgba(234,243,255,.82);
+      margin: 2px 0;
+      padding-left: 10px;
+      position: relative;
+    }
+    .log-op::before { content: "▸"; position: absolute; left: 0; opacity: .5; }
+    .log-op.ok { color: #80efb1; }
+    .log-op.danger { color: #ff8b94; }
+    .log-op.warn { color: #f5b84b; }
+    .log-op.event { color: #9cc6ff; }
+    .log-op.axis { color: #ffd66b; font-weight: 600; }
+    .log-event { color: var(--blue); font-size: 12px; margin: 4px 0 3px; padding-left: 4px; }
+    .log-delta { font-size: 11px; margin: 5px 0 2px; color: var(--muted); padding-left: 2px; }
+    .delta {
+      display: inline-block;
+      padding: 1px 6px;
+      margin: 0 2px 2px 0;
+      border-radius: 4px;
+      font-weight: 600;
+      font-size: 10.5px;
+    }
+    .delta.up { background: rgba(79,209,139,.18); color: #80efb1; }
+    .delta.down { background: rgba(255,89,100,.18); color: #ff8b94; }
+    .log-outcome {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--amber);
+      margin: 6px 0 0;
+      padding: 4px 8px;
+      background: rgba(245,184,75,.12);
+      border-radius: 6px;
+    }
+
+    @media (max-width: 1180px) {
+      .shell { grid-template-columns: 1fr; }
+      header, footer { grid-column: 1; }
+      footer { grid-template-columns: 1fr; }
+      .intervention { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="title">
+        <h1>해협의 72시간</h1>
+        <span>Strait 72 · v0.3.2 playtest UI</span>
+      </div>
+      <div class="turnline">
+        <span class="chip"><strong id="turnCounter">TURN - / -</strong></span>
+        <span class="chip" id="gameClock">D+0 00:00</span>
+        <span class="chip">중국 72시간 목표: <strong id="chinaClock">-h</strong></span>
+        <span class="chip" id="outcomeChip">진행 중</span>
+        <button id="resetBtn" class="reset-top">새 게임</button>
+      </div>
+    </header>
+
+    <section class="panel">
+      <div class="side-title">중국 <small>공격 측</small></div>
+      <div id="chinaMeters"></div>
+
+      <hr style="border-color:rgba(255,255,255,.08); margin:14px 0;" />
+
+      <div class="controls">
+        <label>주공축
+          <select id="chinaAxisSelect"></select>
+        </label>
+        <label>선택 지역
+          <select id="provinceSelect"></select>
+        </label>
+        <button id="suggestBtn">AI 추천 적용</button>
+        <button id="autoTurnBtn">자동 1턴 진행</button>
+      </div>
+
+      <hr style="border-color:rgba(255,255,255,.08); margin:14px 0;" />
+
+      <div class="side-title">중국 카드 <small>최대 2장 권장</small></div>
+      <div id="chinaCards" class="cards"></div>
+    </section>
+
+    <main class="panel map-wrap">
+      <canvas id="mapCanvas" width="1120" height="720"></canvas>
+      <div class="map-help">지도 지역을 클릭하면 선택 지역으로 지정됩니다. 현재는 룰 검증용 단순 Canvas 렌더링입니다.</div>
+    </main>
+
+    <section class="panel">
+      <div class="side-title">대만 <small>방어 측</small></div>
+      <div id="taiwanMeters"></div>
+
+      <hr style="border-color:rgba(255,255,255,.08); margin:14px 0;" />
+
+      <div class="controls">
+        <label>방어 중점
+          <select id="taiwanFocusSelect"></select>
+        </label>
+        <button id="runTurnBtn" class="primary">턴 실행</button>
+      </div>
+
+      <hr style="border-color:rgba(255,255,255,.08); margin:14px 0;" />
+
+      <div class="side-title">대만 카드 <small>최대 2장 권장</small></div>
+      <div id="taiwanCards" class="cards"></div>
+    </section>
+
+    <footer>
+      <section class="panel">
+        <div class="side-title">외부 개입 / 국제 변수 <small>카운트다운 게이지</small></div>
+        <div id="interventionMeters" class="intervention"></div>
+      </section>
+      <section class="panel">
+        <div class="side-title">작전 로그 <small>최근 20개</small></div>
+        <div id="logBox" class="log"></div>
+      </section>
+    </footer>
+  </div>
+
+  <script type="module" src="./src/playable_app.js?v=032-20260523"></script>
+</body>
+</html>

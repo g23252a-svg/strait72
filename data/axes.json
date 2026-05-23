@@ -1,0 +1,72 @@
+[
+  {
+    "id": "north_pressure",
+    "name": "북부 압박",
+    "side": "china",
+    "description": "수도권과 북부 핵심 거점을 압박한다.",
+    "primaryEffects": {
+      "landingProgressBonus": 1,
+      "taiwanGovernmentDamage": 6,
+      "usInterventionGain": 5
+    },
+    "riskOnFailure": {
+      "chinaPoliticalPressure": 6,
+      "taiwanMorale": 5
+    }
+  },
+  {
+    "id": "south_landing",
+    "name": "남부 상륙",
+    "side": "china",
+    "description": "남부 항만과 보급 거점을 노린다.",
+    "primaryEffects": {
+      "landingProgressBonus": 1,
+      "supplyGainOnSuccess": 8
+    },
+    "riskOnFailure": {
+      "chinaSupply": -3,
+      "chinaPoliticalPressure": 6
+    }
+  },
+  {
+    "id": "naval_blockade",
+    "name": "해상 봉쇄",
+    "side": "china",
+    "description": "대만 보급과 외부 연결을 압박한다.",
+    "primaryEffects": {
+      "taiwanSupplyDamage": 10,
+      "japanInterventionGain": 5,
+      "taiwanMorale": -2
+    },
+    "riskOnFailure": {
+      "chinaTempo": -3
+    }
+  },
+  {
+    "id": "information_warfare",
+    "name": "정보전",
+    "side": "china",
+    "description": "대만 지휘망과 국제 여론 대응을 교란한다.",
+    "primaryEffects": {
+      "taiwanCommandDamage": 8,
+      "interventionGainReduction": 3,
+      "taiwanGovernmentDamage": 2
+    },
+    "riskOnFailure": {
+      "chinaPoliticalPressure": 4
+    }
+  },
+  {
+    "id": "diplomatic_pressure",
+    "name": "외교 압박",
+    "side": "china",
+    "description": "동맹국 개입 판단을 지연시킨다.",
+    "primaryEffects": {
+      "usInterventionGainReduction": 3,
+      "japanInterventionGainReduction": 2
+    },
+    "riskOnFailure": {
+      "internationalOpinion": 6
+    }
+  }
+]

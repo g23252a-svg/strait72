@@ -1,0 +1,158 @@
+[
+  {
+    "id": "taiwan_backup_network",
+    "name": "백업망 가동",
+    "side": "taiwan",
+    "type": "counterplay",
+    "description": "중국의 사이버·정보전 피해를 줄인다.",
+    "trigger": {
+      "respondsTo": ["china_cyber_attack", "axis:information_warfare"]
+    },
+    "effects": {
+      "taiwanCommandDamageReduction": 8,
+      "taiwanMorale": 2
+    },
+    "cost": {
+      "command": 1
+    }
+  },
+  {
+    "id": "taiwan_president_speech",
+    "name": "대통령 연설",
+    "side": "taiwan",
+    "type": "rally",
+    "description": "전 국민과 동맹국에 결의를 호소한다.",
+    "effects": {
+      "taiwanMorale": 10,
+      "usInterventionGain": 4,
+      "japanInterventionGain": 2
+    },
+    "canBeCounteredBy": ["china_diplomatic_pivot"],
+    "cost": {
+      "command": 1
+    }
+  },
+  {
+    "id": "taiwan_north_defense_buildup",
+    "name": "북부 방어 강화",
+    "side": "taiwan",
+    "type": "defense_buff",
+    "description": "수도권/북부 거점의 방어 태세를 강화한다.",
+    "target": ["taipei", "keelung", "taoyuan"],
+    "effects": {
+      "defenseValueBonus": 2,
+      "landingProgressRegressChance": 0.3
+    },
+    "cost": {
+      "command": 1
+    }
+  },
+  {
+    "id": "taiwan_port_defense_buildup",
+    "name": "항만 방어 강화",
+    "side": "taiwan",
+    "type": "defense_buff",
+    "description": "주요 항만의 상륙 저지력을 끌어올린다.",
+    "target": ["keelung", "kaohsiung"],
+    "effects": {
+      "defenseValueBonus": 3,
+      "landingProgressRegressChance": 0.4
+    },
+    "cost": {
+      "command": 1,
+      "reserveTroops": 1
+    }
+  },
+  {
+    "id": "taiwan_mobile_reserve_deploy",
+    "name": "기동 예비대 투입",
+    "side": "taiwan",
+    "type": "defense_buff",
+    "description": "선택한 지역에 즉시 예비대를 투입한다.",
+    "target": "selected_province",
+    "effects": {
+      "defenseValueBonus": 3,
+      "landingProgressRegressChance": 0.5
+    },
+    "cost": {
+      "reserveTroops": 2
+    }
+  },
+  {
+    "id": "taiwan_international_appeal",
+    "name": "국제사회 호소",
+    "side": "taiwan",
+    "type": "diplomacy",
+    "description": "주요 동맹국에 긴급 개입을 요청한다.",
+    "effects": {
+      "usInterventionGain": 8,
+      "japanInterventionGain": 5,
+      "internationalOpinion": 4
+    },
+    "canBeCounteredBy": ["china_diplomatic_pivot"],
+    "cost": {
+      "command": 1,
+      "internationalRequest": 1
+    }
+  },
+  {
+    "id": "taiwan_distributed_command",
+    "name": "분산 지휘체계",
+    "side": "taiwan",
+    "type": "buff_persistent",
+    "description": "지휘권을 분산해 향후 사이버·정보전 효과를 절반으로 줄인다.",
+    "duration": 3,
+    "effects": {
+      "chinaInformationWarfareReduction": 0.5
+    },
+    "cost": {
+      "command": 2
+    }
+  },
+  {
+    "id": "taiwan_coastal_surveillance",
+    "name": "해안 감시 강화",
+    "side": "taiwan",
+    "type": "intel",
+    "description": "다음 턴 중국 블러프 카드 한 장의 정체를 공개시킨다.",
+    "effects": {
+      "revealOpponentBluff": 1,
+      "nextTurnDefenseValueBonus": 1
+    },
+    "cost": {
+      "command": 1
+    }
+  },
+  {
+    "id": "taiwan_false_defense_setup",
+    "name": "허위 방어 배치",
+    "side": "taiwan",
+    "type": "bluff",
+    "description": "허위 진지를 흘려 중국 정보전의 정확도를 떨어뜨린다. 뒷면 배치.",
+    "facedown": true,
+    "target": "selected_province",
+    "effects": {
+      "chinaInformationWarfareReduction": 0.3,
+      "ifChinaMisreads": {
+        "nextTurnCounterAttackBonus": 2
+      }
+    },
+    "cost": {
+      "command": 1
+    }
+  },
+  {
+    "id": "taiwan_emergency_restoration",
+    "name": "긴급 복구 작전",
+    "side": "taiwan",
+    "type": "recovery",
+    "description": "공격받은 지휘망과 정부 기능을 긴급 복구한다.",
+    "effects": {
+      "taiwanCommand": 6,
+      "taiwanGovernment": 4
+    },
+    "cost": {
+      "command": 2
+    }
+  }
+]

@@ -1,0 +1,208 @@
+[
+  {
+    "id": "china_blitz_order",
+    "name": "속전속결 명령",
+    "side": "china",
+    "type": "action_buff",
+    "description": "이번 턴 작전 속도를 극단까지 끌어올린다. 성공 시 큰 진척, 실패 시 정치 압박 폭증.",
+    "effects": {
+      "attackBonus": 2,
+      "landingProgressBonusOnSuccess": 1
+    },
+    "riskOnFailure": {
+      "chinaPoliticalPressure": 12
+    },
+    "combos": {
+      "withAxis": [
+        "north_pressure",
+        "south_landing"
+      ],
+      "bonusEffect": {
+        "attackBonus": 1
+      }
+    },
+    "cost": {
+      "tempo": 2
+    }
+  },
+  {
+    "id": "china_naval_blockade_intensify",
+    "name": "해상 봉쇄 강화",
+    "side": "china",
+    "type": "standard",
+    "description": "해협 봉쇄선을 두텁게 친다.",
+    "preferredAxis": "naval_blockade",
+    "target": "strait",
+    "effects": {
+      "taiwanSupplyDamage": 14,
+      "japanInterventionGain": 4,
+      "taiwanMorale": -2
+    },
+    "cost": {
+      "tempo": 1
+    }
+  },
+  {
+    "id": "china_cyber_attack",
+    "name": "사이버 공격",
+    "side": "china",
+    "type": "standard",
+    "description": "대만 지휘망과 행정 전산망을 공격한다.",
+    "preferredAxis": "information_warfare",
+    "target": "any",
+    "effects": {
+      "taiwanCommandDamage": 10,
+      "taiwanGovernmentDamage": 6
+    },
+    "canBeCounteredBy": [
+      "taiwan_backup_network",
+      "taiwan_distributed_command"
+    ],
+    "cost": {
+      "command": 1
+    }
+  },
+  {
+    "id": "china_false_landing_prep",
+    "name": "허위 상륙 준비",
+    "side": "china",
+    "type": "bluff",
+    "description": "특정 지역에 상륙 의도를 흘려 대만 방어를 분산시킨다. 뒷면 배치.",
+    "facedown": true,
+    "target": "selected_province",
+    "effects": {
+      "deceptionTarget": "selected_province",
+      "ifTaiwanMisreads": {
+        "nextTurnAttackBonus": 3,
+        "taiwanReserveLockout": 1
+      }
+    },
+    "canBeRevealedBy": [
+      "taiwan_coastal_surveillance"
+    ],
+    "cost": {
+      "command": 1
+    }
+  },
+  {
+    "id": "china_north_assault",
+    "name": "북부 압박",
+    "side": "china",
+    "type": "attack",
+    "description": "지룽/타오위안 축으로 상륙 진척을 시도한다.",
+    "preferredAxis": "north_pressure",
+    "target": [
+      "keelung",
+      "taoyuan"
+    ],
+    "effects": {
+      "landingProgressBonus": 1,
+      "usInterventionGain": 3
+    },
+    "cost": {
+      "tempo": 2,
+      "supply": 1
+    }
+  },
+  {
+    "id": "china_south_landing_prep",
+    "name": "남부 상륙 준비",
+    "side": "china",
+    "type": "attack",
+    "description": "가오슝/타이난 축으로 상륙 진척을 시도한다.",
+    "preferredAxis": "south_landing",
+    "target": [
+      "kaohsiung",
+      "tainan"
+    ],
+    "effects": {
+      "landingProgressBonus": 1,
+      "supplyGainOnSuccess": 5
+    },
+    "cost": {
+      "tempo": 2,
+      "supply": 1
+    }
+  },
+  {
+    "id": "china_missile_pressure",
+    "name": "미사일 압박",
+    "side": "china",
+    "type": "ranged",
+    "description": "장거리 화력으로 지역 방어력과 사기를 깎는다. 인접 무관.",
+    "target": "any",
+    "ignoresAdjacency": true,
+    "effects": {
+      "defenseValueDamage": 3,
+      "taiwanMorale": -4
+    },
+    "cost": {
+      "tempo": 1
+    }
+  },
+  {
+    "id": "china_diplomatic_pivot",
+    "name": "외교 프레임 전환",
+    "side": "china",
+    "type": "counterplay",
+    "description": "대만의 국제 호소를 외교적으로 무력화한다.",
+    "preferredAxis": "diplomatic_pressure",
+    "trigger": {
+      "respondsTo": [
+        "taiwan_international_appeal",
+        "taiwan_president_speech"
+      ]
+    },
+    "effects": {
+      "usInterventionGainReduction": 3,
+      "japanInterventionGainReduction": 2
+    },
+    "cost": {
+      "command": 1
+    }
+  },
+  {
+    "id": "china_supply_line_extension",
+    "name": "보급선 확장",
+    "side": "china",
+    "type": "support",
+    "description": "장기전을 대비해 보급선을 확장한다.",
+    "effects": {
+      "chinaSupply": 6,
+      "nextTurnTempoBonus": 2
+    },
+    "combos": {
+      "withAxis": [
+        "south_landing"
+      ],
+      "bonusEffect": {
+        "supplyGainOnSuccess": 3
+      }
+    },
+    "cost": {
+      "tempo": 1
+    }
+  },
+  {
+    "id": "china_night_operation",
+    "name": "야간 작전",
+    "side": "china",
+    "type": "modifier",
+    "description": "이번 턴 상륙 시도의 가시거리를 떨어뜨려 방어 보정을 줄인다.",
+    "effects": {
+      "taiwanDefenseValueDebuff": 2,
+      "japanInterventionGain": 2
+    },
+    "combos": {
+      "withCardType": [
+        "attack"
+      ],
+      "bonusEffect": {
+        "landingProgressBonus": 1
+      }
+    },
+    "cost": {
+      "tempo": 1
+    }
+  }
+]
