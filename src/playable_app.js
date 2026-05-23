@@ -32,7 +32,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.3.4";
+const EXPECTED_BUILD = "v0.3.5";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -462,7 +462,10 @@ function buildTurnSummaries(state) {
     if (entry.phase === 3 && entry.placed) slot.placed = entry.placed;
     if (entry.phase === 4 && entry.operations) slot.operations.push(...entry.operations);
     if (typeof entry.name === "string" && entry.name.startsWith("intervention_") && entry.triggeredEvents) {
-      slot.events.push(...entry.triggeredEvents);
+      // 같은 턴 안에서 동일 이벤트가 두 번 표시되는 UI 중복 방지
+      for (const eventId of entry.triggeredEvents) {
+        if (!slot.events.includes(eventId)) slot.events.push(eventId);
+      }
     }
     if (entry.phase === 7 && entry.outcome) slot.outcome = entry.outcome;
   }

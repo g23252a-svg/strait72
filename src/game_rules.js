@@ -1,5 +1,5 @@
 // =====================================================================
-// 해협의 72시간 (Strait 72) - v0.3.2 플레이테스트 규칙
+// 해협의 72시간 (Strait 72) - v0.3.5 플레이테스트 규칙
 // =====================================================================
 // 핵심 의미:
 //   - 총 게임 길이: 30턴 × 6시간 = 180시간 (7.5일)
@@ -8,12 +8,12 @@
 // =====================================================================
 
 // 빌드 식별 (브라우저 캐시/오래된 파일 감지용)
-export const BUILD_TAG = "v0.3.4";
+export const BUILD_TAG = "v0.3.5";
 export const BUILD_DATE = "2026-05-23";
 export const BUILD_FULL = `${BUILD_TAG}-${BUILD_DATE}`;
 
 export const GAME_RULES = Object.freeze({
-  version: "v0.3.4",
+  version: "v0.3.5",
   totalTurns: 30,
   hoursPerTurn: 6,
   chinaInitialObjectiveHours: 72,  // 중국 속전속결 목표 시한

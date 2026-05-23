@@ -94,8 +94,9 @@ const EFFECT_HANDLERS = {
       // 후퇴는 안 시키고 진척만
       const curIdx = LANDING_STAGES.indexOf(prov.landingStage);
       prov.controlStage = expectedControl;
+      const progressLabel = provId === "taipei" ? "수도권 압박 진척" : "상륙 진척";
       s.thisTurn.operationLog.push(
-        `상륙 진척: ${prov.name} → ${prov.landingStage} / ${prov.controlStage}`
+        `${progressLabel}: ${prov.name} → ${prov.landingStage} / ${prov.controlStage}`
       );
     }
   },
@@ -108,8 +109,9 @@ const EFFECT_HANDLERS = {
       if (Math.random() < p) {
         prov.landingStage = regressLandingStage(prov.landingStage);
         prov.controlStage = landingStageToControlStage(prov.landingStage);
+        const regressLabel = provId === "taipei" ? "수도권 압박 완화" : "상륙 후퇴 성공";
         s.thisTurn.operationLog.push(
-          `상륙 후퇴 성공: ${prov.name} → ${prov.landingStage}`
+          `${regressLabel}: ${prov.name} → ${prov.landingStage}`
         );
       }
     }
@@ -558,6 +560,7 @@ export function phaseDamagePolitical(state) {
 export function phaseInternationalIntervention(state, events, timing) {
   for (const event of events) {
     if (event.timing !== timing) continue;
+    if (state.thisTurn.triggeredEvents.includes(event.id)) continue;
     if (!shouldTriggerEvent(state, event)) continue;
     applyEffects(state, event.effects, { side: "global", resolvedTargets: [] });
     markEventTriggered(state, event);
@@ -665,7 +668,12 @@ function resolveTargets(card, state, axis = null) {
 }
 
 function resolveOperationEffects(state, { source, axis, effects, riskOnFailure, targetIds }) {
-  const ctxBase = { side: source?.side || "china", resolvedTargets: targetIds || [] };
+  const ctxBase = {
+    side: source?.side || "china",
+    resolvedTargets: targetIds || [],
+    source,
+    axis
+  };
 
   if (!isCombatRelevantSource(source)) {
     applyEffects(state, effects, ctxBase);

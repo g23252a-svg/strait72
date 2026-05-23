@@ -335,7 +335,7 @@ for (let i = 0; i < RUNS; i++) {
 
 const summary = aggregate(results);
 
-console.log("\n=== Strait 72 v0.2 balance simulation ===");
+console.log("\n=== Strait 72 v0.3.5 balance simulation ===");
 console.log(`runs=${RUNS} seed=${BASE_SEED} totalTurns=${GAME_RULES.totalTurns} hoursPerTurn=${GAME_RULES.hoursPerTurn}`);
 console.log("\n[Outcome]");
 for (const [outcome, count] of Object.entries(summary.outcomeCounts)) {
