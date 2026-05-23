@@ -32,6 +32,9 @@ import {
 import {
   drawRewards, applyReward, describeRewardApplication
 } from "./reward_system.js";
+import {
+  buildFinalReport, gradeFromScore
+} from "./final_grade.js";
 
 const DATA_PATHS = {
   axes: "./data/axes.json",
@@ -54,12 +57,13 @@ let canvasLoopStarted = false;
 let dayAutoCloseEnabled = false;   // DAY 요약 자동 닫기 토글 (기본 OFF)
 let pendingDayModal = false;       // DAY 모달이 떠 있는지
 let autoToNextDayMode = false;     // "다음 DAY까지 자동 진행" 모드
+let finalModalShown = false;       // v0.4.0-d2: 최종 결과 모달 1회 표시 guard
 
 window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.4.0-c2-b3-3b";
+const EXPECTED_BUILD = "v0.4.0-d2";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -400,6 +404,15 @@ function resetGame() {
     events: data.events
   });
   initializeDecks(state, data.cardsChina, data.cardsTaiwan);
+  // v0.4.0-d2: 재시작 시 final modal guard 리셋 + DAY pending 정리
+  finalModalShown = false;
+  pendingDayModal = false;
+  autoToNextDayMode = false;
+  // 혹시 남아있는 모달 제거
+  const dayOv = document.getElementById("dayEndOverlay");
+  if (dayOv) dayOv.remove();
+  const finalOv = document.getElementById("finalResultOverlay");
+  if (finalOv) finalOv.remove();
   selectedProvince = "keelung";
   fillSelectors();
   renderCampaignBadge();
@@ -801,12 +814,29 @@ function runManualTurn() {
   applySuggestion(false);
   render();
 
+  // v0.4.0-d2: outcome 발생 시 final 우선. DAY 모달은 막고 자동 모드도 중단.
+  if (state.outcome && !finalModalShown) {
+    autoToNextDayMode = false;
+    closeDayModalIfOpen();
+    showFinalResultModal();
+    return;
+  }
+
   // v0.4.0-b: DAY 종료 체크. 마지막 진행 턴(turn 1 증가 전이므로 state.turn - 1 또는 outcome 후 state.turn)이 4의 배수면 모달.
   // runTurn 끝나면 state.turn이 +1 된 상태. 방금 끝난 턴 = state.turn - 1.
   const justFinishedTurn = state.turn - 1;
   if (!state.outcome && isDayEndTurn(justFinishedTurn)) {
     const dayN = dayNumberForTurn(justFinishedTurn);
     showDayEndModal(dayN);
+  }
+}
+
+// v0.4.0-d2: DAY modal이 떠 있으면 강제로 닫음 (final이 우선일 때)
+function closeDayModalIfOpen() {
+  const overlay = document.getElementById("dayEndOverlay");
+  if (overlay) {
+    overlay.remove();
+    pendingDayModal = false;
   }
 }
 
@@ -1491,6 +1521,270 @@ function showDayEndModal(dayNumber) {
     }, 1500);
   }
 }
+
+// =====================================================================
+// v0.4.0-d2: 최종 결과 모달
+// ---------------------------------------------------------------------
+// outcome 발생 시 1회만 호출 (finalModalShown guard).
+// 구조:
+//   - 결과 제목 + 종료 시점
+//   - 플레이어 진영 큰 등급/점수
+//   - 상대 진영 작은 등급
+//   - 점수 breakdown (긍정 top 3 + 부정 top 2 + 기타 압축)
+//   - 핵심 요약 (점령지, 주요 전투, 보유 보상)
+//   - 해설 문구
+//   - 다시 시작 / 같은 설정 재시작
+// =====================================================================
+function showFinalResultModal() {
+  if (finalModalShown) return;
+  finalModalShown = true;
+
+  const report = buildFinalReport(state, campaign, { gameRules: GAME_RULES });
+  const playerSide = campaign?.selectedSide === "both"
+    ? (report.taiwan.score >= report.china.score ? "taiwan" : "china")
+    : campaign?.selectedSide || "taiwan";
+  const opponentSide = playerSide === "taiwan" ? "china" : "taiwan";
+
+  const player = report[playerSide];
+  const opponent = report[opponentSide];
+
+  const overlay = document.createElement("div");
+  overlay.id = "finalResultOverlay";
+  overlay.style.cssText = `
+    position: fixed; inset: 0; z-index: 5000;
+    background: rgba(3, 8, 18, .92);
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 24px; overflow-y: auto;
+    animation: fadeIn .3s ease;
+  `;
+
+  // 점수 breakdown 압축 (사용자 명세: 긍정 top 3 + 부정 top 2 + 기타 압축)
+  const compressedBreakdown = compressBreakdown(player.components);
+
+  // 핵심 요약 (점령지/주요 전투/보유 보상)
+  const playerRewards = (report.summary.ownedRewards || [])
+    .filter(r => r.side === playerSide || campaign?.selectedSide === "both")
+    .slice(0, 5);
+  const playerRewardLines = playerRewards.length
+    ? playerRewards.map(r => `<li>${escapeHtml(r.name)}</li>`).join("")
+    : `<li class="muted">없음</li>`;
+
+  const occupiedList = report.summary.occupiedProvinces.length
+    ? report.summary.occupiedProvinces.slice(0, 6).map(p => escapeHtml(p)).join(", ")
+    : "없음";
+  const contestedList = report.summary.contestedProvinces.length
+    ? report.summary.contestedProvinces.slice(0, 6).map(p => escapeHtml(p)).join(", ")
+    : "없음";
+
+  const majorBattleLines = report.summary.majorBattles.length
+    ? report.summary.majorBattles.slice(-3).map(b => {
+        const mark = b.success ? "✓" : "✗";
+        const sign = b.margin >= 0 ? "+" : "";
+        return `<li>T${b.turn ?? "?"} ${escapeHtml(b.sourceName)} ${mark} ${escapeHtml(b.targetName)} (차이 ${sign}${b.margin})</li>`;
+      }).join("")
+    : `<li class="muted">기록된 주요 전투 없음</li>`;
+
+  const playerLabel = playerSide === "taiwan" ? "대만" : "중국";
+  const oppLabel = opponentSide === "taiwan" ? "대만" : "중국";
+  const playerColor = playerSide === "taiwan" ? "#80efb1" : "#ff8b94";
+  const oppColor = opponentSide === "taiwan" ? "#80efb1" : "#ff8b94";
+
+  // 등급별 색상 (S=골드, A=실버, B=청동, C=회색, D=다크)
+  const gradeColor = {
+    S: "#ffd66b", A: "#cfd8e6", B: "#d09a5e", C: "#8a9aab", D: "#5a6a7b"
+  };
+  const playerGradeColor = gradeColor[player.grade];
+
+  overlay.innerHTML = `
+    <div class="final-modal">
+      <div class="final-header">
+        <div class="final-subtitle">캠페인 종료 · T${report.finalTurn} / ${report.totalTurns} · ${formatGameTime(state)}</div>
+        <h2 class="final-title">${escapeHtml(report.title)}</h2>
+      </div>
+
+      <div class="final-main">
+        <div class="final-grade-box" style="border-color: ${playerGradeColor};">
+          <div class="final-grade-label" style="color: ${playerColor};">${playerLabel} 캠페인 결과</div>
+          <div class="final-grade-letter" style="color: ${playerGradeColor};">${player.grade}</div>
+          <div class="final-grade-score">${player.score} / 100</div>
+        </div>
+        <div class="final-opponent-box">
+          <div class="final-opponent-label" style="color: ${oppColor};">${oppLabel} 측 평가</div>
+          <div class="final-opponent-grade" style="color: ${gradeColor[opponent.grade]};">${opponent.grade} (${opponent.score})</div>
+        </div>
+      </div>
+
+      <section class="final-interp">
+        <p>${escapeHtml(player.interpretation)}</p>
+      </section>
+
+      <section class="final-breakdown">
+        <h3>점수 요인</h3>
+        <ul class="breakdown-list">
+          <li class="breakdown-base"><span>기본 결과 점수</span><span class="pos">+${player.base}</span></li>
+          ${compressedBreakdown.positives.map(c =>
+            `<li><span>${escapeHtml(c.label)}</span><span class="pos">+${c.delta}</span></li>`
+          ).join("")}
+          ${compressedBreakdown.othersPositive.delta > 0
+            ? `<li class="muted"><span>기타 (${compressedBreakdown.othersPositive.count}개)</span><span class="pos">+${compressedBreakdown.othersPositive.delta}</span></li>`
+            : ""}
+          ${compressedBreakdown.negatives.map(c =>
+            `<li><span>${escapeHtml(c.label)}</span><span class="neg">${c.delta}</span></li>`
+          ).join("")}
+          ${compressedBreakdown.othersNegative.delta < 0
+            ? `<li class="muted"><span>기타 (${compressedBreakdown.othersNegative.count}개)</span><span class="neg">${compressedBreakdown.othersNegative.delta}</span></li>`
+            : ""}
+        </ul>
+      </section>
+
+      <section class="final-summary">
+        <h3>전황 요약</h3>
+        <div class="summary-grid">
+          <div><strong>점령된 지역:</strong> ${occupiedList}</div>
+          <div><strong>전투 중 지역:</strong> ${contestedList}</div>
+        </div>
+        <h4>주요 전투 (최근 3)</h4>
+        <ul class="battle-list">${majorBattleLines}</ul>
+        <h4>활성 보상</h4>
+        <ul class="rewards-list">${playerRewardLines}</ul>
+      </section>
+
+      <div class="final-controls">
+        <button id="finalRestartSameBtn" class="primary">같은 설정으로 재시작</button>
+        <button id="finalRestartNewBtn" class="secondary">진영 선택으로 돌아가기</button>
+      </div>
+    </div>
+
+    <style>
+      .final-modal {
+        max-width: 720px; width: 100%;
+        background: linear-gradient(180deg, rgba(13, 28, 50, .98), rgba(8, 18, 34, .98));
+        border: 2px solid rgba(255, 214, 107, 0.5);
+        border-radius: 18px;
+        padding: 28px 32px 24px;
+        color: #eaf3ff;
+        box-shadow: 0 30px 100px rgba(0,0,0,.8), 0 0 60px rgba(255, 214, 107, 0.15);
+        max-height: calc(100vh - 48px);
+        overflow-y: auto;
+        margin: auto 0;
+      }
+      .final-modal::-webkit-scrollbar { width: 8px; }
+      .final-modal::-webkit-scrollbar-thumb {
+        background: rgba(255, 214, 107, .3);
+        border-radius: 4px;
+      }
+      .final-header { text-align: center; border-bottom: 1px solid rgba(255,255,255,.08); padding-bottom: 16px; margin-bottom: 20px; }
+      .final-subtitle { font-size: 11px; color: rgba(234, 243, 255, .55); letter-spacing: 1.5px; }
+      .final-title { margin: 6px 0 0; font-size: 26px; font-weight: 800; color: #ffd66b; letter-spacing: 1px; }
+      .final-main { display: flex; gap: 16px; align-items: stretch; margin-bottom: 20px; }
+      .final-grade-box {
+        flex: 2;
+        background: rgba(255, 214, 107, .04);
+        border: 2px solid;
+        border-radius: 14px;
+        padding: 16px 20px;
+        text-align: center;
+      }
+      .final-grade-label { font-size: 11px; letter-spacing: 1.5px; font-weight: 700; margin-bottom: 8px; }
+      .final-grade-letter { font-size: 76px; font-weight: 900; line-height: 1; letter-spacing: 2px; text-shadow: 0 4px 16px rgba(0,0,0,.5); }
+      .final-grade-score { margin-top: 8px; font-size: 18px; font-weight: 700; color: #eaf3ff; }
+      .final-opponent-box {
+        flex: 1;
+        background: rgba(124, 171, 220, .06);
+        border: 1px solid rgba(124, 171, 220, .25);
+        border-radius: 10px;
+        padding: 14px;
+        text-align: center;
+        display: flex; flex-direction: column; justify-content: center;
+      }
+      .final-opponent-label { font-size: 11px; letter-spacing: 1px; font-weight: 700; margin-bottom: 6px; }
+      .final-opponent-grade { font-size: 26px; font-weight: 800; }
+      .final-interp {
+        background: rgba(255, 214, 107, .07);
+        border-left: 3px solid #ffd66b;
+        padding: 12px 16px;
+        border-radius: 6px;
+        margin-bottom: 18px;
+      }
+      .final-interp p { margin: 0; font-size: 14px; line-height: 1.6; color: rgba(234, 243, 255, .92); }
+      .final-modal section { margin-bottom: 18px; }
+      .final-modal h3 { margin: 0 0 8px; font-size: 12px; color: #7cabdc; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; }
+      .final-modal h4 { margin: 10px 0 4px; font-size: 11px; color: rgba(124, 171, 220, .8); font-weight: 700; letter-spacing: .5px; }
+      .breakdown-list, .battle-list, .rewards-list { list-style: none; padding: 0; margin: 0; font-size: 13px; line-height: 1.6; }
+      .breakdown-list li { display: flex; justify-content: space-between; padding: 4px 8px; border-bottom: 1px dashed rgba(255,255,255,.06); }
+      .breakdown-list li:last-child { border-bottom: none; }
+      .breakdown-list .breakdown-base { font-weight: 700; background: rgba(124, 171, 220, .08); border-radius: 4px; }
+      .breakdown-list .pos { color: #80efb1; font-weight: 700; }
+      .breakdown-list .neg { color: #ff8b94; font-weight: 700; }
+      .breakdown-list .muted { color: rgba(234, 243, 255, .5); font-style: italic; }
+      .summary-grid { display: grid; gap: 6px; font-size: 13px; line-height: 1.6; }
+      .summary-grid strong { color: #7cabdc; }
+      .battle-list li, .rewards-list li { padding: 3px 0; }
+      .rewards-list li { color: rgba(234, 243, 255, .85); }
+      .final-controls { display: flex; gap: 10px; margin-top: 16px; }
+      .final-controls .primary {
+        flex: 1;
+        background: linear-gradient(180deg, #ffd66b, #d9a939);
+        color: #1a1408; border: 0;
+        padding: 14px; border-radius: 10px;
+        font-size: 14px; font-weight: 800; cursor: pointer;
+        letter-spacing: .5px;
+      }
+      .final-controls .secondary {
+        flex: 1;
+        background: rgba(124, 171, 220, .15);
+        color: #eaf3ff; border: 1px solid #7cabdc;
+        padding: 14px; border-radius: 10px;
+        font-size: 13px; font-weight: 700; cursor: pointer;
+      }
+      .final-modal .muted { color: rgba(234, 243, 255, .5); font-size: 12px; }
+    </style>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // 같은 설정 재시작
+  overlay.querySelector("#finalRestartSameBtn").addEventListener("click", () => {
+    overlay.remove();
+    resetGame();
+    dom.runTurnBtn.disabled = false;
+    dom.autoTurnBtn.disabled = false;
+  });
+  // 진영 선택으로
+  overlay.querySelector("#finalRestartNewBtn").addEventListener("click", () => {
+    overlay.remove();
+    showSideSelectModal((selectedSide, difficulty) => {
+      campaign = createCampaignState(selectedSide, difficulty);
+      saveLastChoice(selectedSide, difficulty);
+      resetGame();
+      dom.runTurnBtn.disabled = false;
+      dom.autoTurnBtn.disabled = false;
+    });
+  });
+}
+
+// breakdown 압축: 긍정 top 3 + 부정 top 2 + 나머지 합산
+function compressBreakdown(components) {
+  const positives = components.filter(c => c.delta > 0).sort((a, b) => b.delta - a.delta);
+  const negatives = components.filter(c => c.delta < 0).sort((a, b) => a.delta - b.delta);
+  const topPos = positives.slice(0, 3);
+  const topNeg = negatives.slice(0, 2);
+  const restPos = positives.slice(3);
+  const restNeg = negatives.slice(2);
+  return {
+    positives: topPos,
+    negatives: topNeg,
+    othersPositive: {
+      count: restPos.length,
+      delta: restPos.reduce((s, c) => s + c.delta, 0)
+    },
+    othersNegative: {
+      count: restNeg.length,
+      delta: restNeg.reduce((s, c) => s + c.delta, 0)
+    }
+  };
+}
+
 
 // 다음 DAY 종료까지 자동 진행 (모달이 다시 뜰 때까지)
 function runAutoToNextDay() {
