@@ -25,6 +25,10 @@ import {
   loadLastChoice, saveLastChoice,
   createCampaignState, isPlayerSide, isAISide
 } from "./campaign_state.js";
+import {
+  TURNS_PER_DAY, dayNumberForTurn, isDayEndTurn,
+  formatDayLabel, buildDayReport
+} from "./day_cycle.js";
 
 const DATA_PATHS = {
   axes: "./data/axes.json",
@@ -42,12 +46,16 @@ let campaign = null;  // v0.4.0-a: 진영/난이도
 let selectedProvince = "keelung";
 const recentUiPicks = { china: [], taiwan: [] };
 let canvasLoopStarted = false;
+// v0.4.0-b: DAY 진행
+let dayAutoCloseEnabled = false;   // DAY 요약 자동 닫기 토글 (기본 OFF)
+let pendingDayModal = false;       // DAY 모달이 떠 있는지
+let autoToNextDayMode = false;     // "다음 DAY까지 자동 진행" 모드
 
 window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.4.0-a";
+const EXPECTED_BUILD = "v0.4.0-b";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -788,6 +796,14 @@ function runManualTurn() {
   renderCards();
   applySuggestion(false);
   render();
+
+  // v0.4.0-b: DAY 종료 체크. 마지막 진행 턴(turn 1 증가 전이므로 state.turn - 1 또는 outcome 후 state.turn)이 4의 배수면 모달.
+  // runTurn 끝나면 state.turn이 +1 된 상태. 방금 끝난 턴 = state.turn - 1.
+  const justFinishedTurn = state.turn - 1;
+  if (!state.outcome && isDayEndTurn(justFinishedTurn)) {
+    const dayN = dayNumberForTurn(justFinishedTurn);
+    showDayEndModal(dayN);
+  }
 }
 
 function rememberPicks(side, ids) {
@@ -1086,4 +1102,171 @@ function escapeHtml(text) {
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
+}
+
+// =====================================================================
+// v0.4.0-b: DAY 종료 모달
+// =====================================================================
+
+function showDayEndModal(dayNumber) {
+  const report = buildDayReport(state, dayNumber, data.events || []);
+  pendingDayModal = true;
+
+  const overlay = document.createElement("div");
+  overlay.id = "dayEndOverlay";
+  overlay.style.cssText = `
+    position: fixed; inset: 0; z-index: 4000;
+    background: rgba(3, 8, 18, .88);
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px; overflow-y: auto;
+    animation: fadeIn .2s ease;
+  `;
+
+  // 게이지 델타 라인
+  const gaugeLines = Object.values(report.gaugeDeltas)
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+    .map(g => {
+      const sign = g.delta > 0 ? "+" : "";
+      const cls = g.delta > 0 ? "pos" : "neg";
+      let sideColor = "var(--text)";
+      if (g.side === "china") sideColor = "#ff8b94";
+      else if (g.side === "taiwan") sideColor = "#80efb1";
+      else if (g.side === "ally") sideColor = "#7cabdc";
+      return `<li><span style="color:${sideColor}">${escapeHtml(g.label)}</span> <span class="${cls}">${sign}${g.delta}</span> <span class="muted">(${g.before}→${g.after})</span></li>`;
+    }).join("");
+
+  const occupationLines = report.occupationChanges.map(c => {
+    const tagClass = c.isLoss ? "occu-loss" : c.isRecover ? "occu-recover" : "occu-neutral";
+    return `<li class="${tagClass}">${escapeHtml(c.name)}: ${escapeHtml(c.before)} → <b>${escapeHtml(c.after)}</b></li>`;
+  }).join("");
+
+  const eventLines = report.events.map(e => `<li>📣 ${escapeHtml(e)}</li>`).join("");
+  const battleLines = report.majorBattles.map(b => `<li>⚔ T${b.turn} ${escapeHtml(b.text)}</li>`).join("");
+
+  // 진영별 해석 (양쪽 모드면 both 우선, 아니면 선택 진영)
+  let interpretationText = "";
+  if (campaign?.selectedSide === "taiwan") interpretationText = report.interpretation.taiwan;
+  else if (campaign?.selectedSide === "china") interpretationText = report.interpretation.china;
+  else interpretationText = report.interpretation.both + " / 대만: " + report.interpretation.taiwan + " / 중국: " + report.interpretation.china;
+
+  overlay.innerHTML = `
+    <div class="day-modal">
+      <div class="day-header">
+        <h2>${escapeHtml(report.dayLabel)} 종료</h2>
+        <p class="day-subtitle">T${report.turnRange[0]}-${report.turnRange[1]} 진행 완료</p>
+      </div>
+
+      ${occupationLines ? `<section><h3>점령 변화</h3><ul class="occu-list">${occupationLines}</ul></section>` : ""}
+      ${battleLines ? `<section><h3>주요 전투</h3><ul>${battleLines}</ul></section>` : ""}
+      ${eventLines ? `<section><h3>국제 이벤트</h3><ul class="event-list">${eventLines}</ul></section>` : ""}
+
+      <section><h3>게이지 변화</h3><ul class="gauge-list">${gaugeLines || "<li class=\"muted\">변화 없음</li>"}</ul></section>
+
+      <section class="interp-box">
+        <h3>${campaign?.selectedSide === "both" ? "양측 분석" : SIDES[campaign?.selectedSide]?.name + " 관점"}</h3>
+        <p>${escapeHtml(interpretationText)}</p>
+      </section>
+
+      <div class="day-controls">
+        <button id="dayContinueBtn" class="primary">다음 날 계속</button>
+        <button id="dayAutoBtn" class="secondary">다음 DAY까지 자동 진행</button>
+        <label class="auto-close-toggle">
+          <input type="checkbox" id="dayAutoCloseToggle" ${dayAutoCloseEnabled ? "checked" : ""} />
+          DAY 요약 자동 닫기
+        </label>
+      </div>
+    </div>
+
+    <style>
+      @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+      .day-modal {
+        max-width: 620px; width: 100%;
+        background: linear-gradient(180deg, rgba(13, 28, 50, .98), rgba(8, 18, 34, .98));
+        border: 1px solid rgba(124, 171, 220, 0.35);
+        border-radius: 18px;
+        padding: 26px 28px 22px;
+        color: #eaf3ff;
+        box-shadow: 0 30px 80px rgba(0,0,0,.7);
+      }
+      .day-header { text-align: center; border-bottom: 1px solid rgba(255,255,255,.08); padding-bottom: 14px; margin-bottom: 16px; }
+      .day-header h2 { margin: 0; font-size: 22px; font-weight: 800; color: #ffd66b; letter-spacing: 1px; }
+      .day-subtitle { margin: 4px 0 0; font-size: 11.5px; color: rgba(234, 243, 255, .55); letter-spacing: 1.5px; }
+      .day-modal section { margin-bottom: 14px; }
+      .day-modal h3 { margin: 0 0 7px; font-size: 12px; color: #7cabdc; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; }
+      .day-modal ul { list-style: none; padding: 0; margin: 0; font-size: 13px; line-height: 1.7; }
+      .day-modal .pos { color: #80efb1; font-weight: 700; }
+      .day-modal .neg { color: #ff8b94; font-weight: 700; }
+      .day-modal .muted { color: rgba(234, 243, 255, .45); font-size: 11px; }
+      .day-modal .gauge-list li { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+      .day-modal .occu-list .occu-loss { color: #ff8b94; }
+      .day-modal .occu-list .occu-recover { color: #80efb1; }
+      .day-modal .interp-box {
+        background: rgba(255, 214, 107, .07);
+        border-left: 3px solid #ffd66b;
+        padding: 10px 14px;
+        border-radius: 6px;
+      }
+      .day-modal .interp-box p { margin: 0; font-size: 13px; line-height: 1.6; color: rgba(234, 243, 255, .9); }
+      .day-controls { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; align-items: center; }
+      .day-controls .primary {
+        flex: 1; min-width: 140px;
+        background: linear-gradient(180deg, #ffd66b, #d9a939);
+        color: #1a1408; border: 0;
+        padding: 12px; border-radius: 10px;
+        font-size: 13px; font-weight: 800; cursor: pointer;
+        letter-spacing: 1px;
+      }
+      .day-controls .secondary {
+        flex: 1; min-width: 140px;
+        background: rgba(124, 171, 220, .15);
+        color: #eaf3ff; border: 1px solid #7cabdc;
+        padding: 12px; border-radius: 10px;
+        font-size: 12.5px; font-weight: 700; cursor: pointer;
+      }
+      .day-controls .auto-close-toggle {
+        font-size: 11.5px; color: rgba(234, 243, 255, .65);
+        cursor: pointer; user-select: none;
+        flex: 0 0 100%; text-align: center;
+        margin-top: 4px;
+      }
+    </style>
+  `;
+  document.body.appendChild(overlay);
+
+  function close() {
+    pendingDayModal = false;
+    overlay.remove();
+  }
+
+  overlay.querySelector("#dayContinueBtn").addEventListener("click", close);
+  overlay.querySelector("#dayAutoBtn").addEventListener("click", () => {
+    autoToNextDayMode = true;
+    close();
+    runAutoToNextDay();
+  });
+  overlay.querySelector("#dayAutoCloseToggle").addEventListener("change", (e) => {
+    dayAutoCloseEnabled = e.target.checked;
+  });
+
+  // DAY 자동 닫기 토글 ON이면 1.5초 후 자동 닫기 + 다음 DAY까지 자동 진행
+  if (dayAutoCloseEnabled) {
+    setTimeout(() => {
+      if (pendingDayModal) {
+        close();
+        runAutoToNextDay();
+      }
+    }, 1500);
+  }
+}
+
+// 다음 DAY 종료까지 자동 진행 (모달이 다시 뜰 때까지)
+function runAutoToNextDay() {
+  let safety = 50;
+  while (safety-- > 0) {
+    if (state.outcome) break;
+    if (pendingDayModal) break;
+    applySuggestion(true);
+    runManualTurn();
+  }
+  autoToNextDayMode = false;
 }

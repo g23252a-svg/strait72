@@ -323,7 +323,21 @@ function findCounterplay(state, sourceCard, cardIndex) {
 
 export function phaseInformation(state) {
   const snapshot = { ...state.gauges };
-  state.log.push({ turn: state.turn, phase: 1, name: "information", snapshot });
+  // v0.4.0-b: DAY 요약용 province 스냅샷 (controlStage/landingStage만 가벼운 복사)
+  const provincesSnapshot = Object.fromEntries(
+    Object.entries(state.provinces || {}).map(([id, p]) => [id, {
+      controlStage: p.controlStage,
+      landingStage: p.landingStage,
+      name: p.name
+    }])
+  );
+  state.log.push({
+    turn: state.turn,
+    phase: 1,
+    name: "information",
+    snapshot,
+    provincesSnapshot
+  });
 
   // ---- v0.3.6: 턴 시작 드로우 ----
   // 1턴은 시작 손패 4장이 이미 있으므로 skip, 2턴부터 매턴 2장 드로우 + 한도 5장 적용
