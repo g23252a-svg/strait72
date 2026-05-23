@@ -611,6 +611,17 @@ export function phaseInternationalIntervention(state, events, timing) {
 }
 
 export function phaseTurnEnd(state) {
+  // v0.3.10: 최근 전투 발생 지역 추적 — 다음 턴 시각 pulse용
+  // combatResults[].targetId가 province id면 pulse 대상으로 기록
+  const battles = state.thisTurn?.combatResults || [];
+  const provinceIds = new Set(Object.keys(state.provinces || {}));
+  const ids = new Set();
+  for (const r of battles) {
+    if (r?.targetId && provinceIds.has(r.targetId)) ids.add(r.targetId);
+  }
+  // 전투 없는 턴이면 빈 배열로 pulse 해제
+  state.persistent.recentBattles = [...ids];
+
   // v0.3.8b: 수도권 압박 지속 추적 (즉시 승리 → 2턴 유지 + 인접 점령 AND 조건)
   // 타이베이가 "교두보 단계 이상"이면 카운터 증가, 아니면 리셋.
   // beachhead landingStage도 포함 (controlStage가 아직 beachhead_established가 아니어도 진척 중).

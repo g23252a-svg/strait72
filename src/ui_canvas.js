@@ -176,20 +176,30 @@ function drawOperationalMotion(ctx, w, h, state, meta = {}) {
   const strait = PROVINCE_LAYOUT.strait;
   if (!strait) return;
 
-  ctx.save();
-  ctx.setLineDash([10, 10]);
-  ctx.lineDashOffset = -t * 28;
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = "rgba(255, 85, 96, .60)";
-
   for (const [id, province] of Object.entries(state.provinces || {})) {
     if (id === "strait") continue;
     const pos = PROVINCE_LAYOUT[id];
     if (!pos) continue;
 
-    const hasLanding = province.landingStage && province.landingStage !== "none";
+    const stage = province.landingStage;
+    const hasLanding = stage && stage !== "none";
     const controlled = province.controlStage === "china_control";
     if (!hasLanding && !controlled) continue;
+
+    // v0.3.10: stage별 화살표 굵기/투명도 강화
+    let lineWidth = 3;
+    let alpha = 0.55;
+    let dash = [10, 10];
+    if (stage === "sea_superiority") { lineWidth = 3; alpha = 0.65; }
+    else if (stage === "landing_attempt") { lineWidth = 4; alpha = 0.80; }
+    else if (stage === "beachhead") { lineWidth = 5; alpha = 0.92; dash = [12, 6]; }
+    else if (stage === "inland_expansion" || controlled) { lineWidth = 5.5; alpha = 1.0; dash = [14, 4]; }
+
+    ctx.save();
+    ctx.setLineDash(dash);
+    ctx.lineDashOffset = -t * 32;
+    ctx.lineWidth = lineWidth;
+    ctx.strokeStyle = `rgba(255, 75, 86, ${alpha})`;
 
     const sx = strait.x * w;
     const sy = strait.y * h;
@@ -200,12 +210,17 @@ function drawOperationalMotion(ctx, w, h, state, meta = {}) {
     ctx.bezierCurveTo((sx + tx) / 2 - 70, (sy + ty) / 2, (sx + tx) / 2, (sy + ty) / 2 + 40, tx, ty);
     ctx.stroke();
 
-    // 움직이는 상륙정 토큰
+    // v0.3.10: stage별 상륙정 사이즈
+    let craftSize = 0.85;
+    if (stage === "landing_attempt") craftSize = 1.0;
+    else if (stage === "beachhead") craftSize = 1.2;
+    else if (stage === "inland_expansion" || controlled) craftSize = 1.35;
+
     const lx = sx + (tx - sx) * (0.35 + 0.35 * t);
     const ly = sy + (ty - sy) * (0.35 + 0.35 * t);
-    drawShipIcon(ctx, lx, ly, "#ff6b76", controlled ? "중국 통제" : "상륙");
+    drawShipIcon(ctx, lx, ly, "#ff6b76", controlled ? "통제" : "상륙", craftSize);
+    ctx.restore();
   }
-  ctx.restore();
 }
 
 function drawAlliedIntervention(ctx, w, h, state, meta = {}) {
@@ -215,15 +230,15 @@ function drawAlliedIntervention(ctx, w, h, state, meta = {}) {
   const t = (Date.now() % 1500) / 1500;
   ctx.save();
 
-  // 미국 항모전단: 대만 동쪽 해상에서 진입
+  // 미국 항모전단: 대만 동쪽 해상에서 진입 (v0.3.10: 1.4배 사이즈 강화)
   const baseX = w * 0.84;
   const baseY = h * 0.30;
-  drawFleetGroup(ctx, baseX, baseY, "🇺🇸 미 항모전단", "#5aa9ff", t);
+  drawFleetGroup(ctx, baseX, baseY, "🇺🇸 미 항모전단", "#5aa9ff", t, 1.4);
 
   drawMovingArrow(ctx, baseX - 18, baseY + 26, w * 0.67, h * 0.45, "#5aa9ff", t);
 
   if (allied.japanNavalSupport) {
-    drawFleetGroup(ctx, w * 0.76, h * 0.14, "🇯🇵 일본 해상지원", "#8bd3ff", (t + 0.3) % 1);
+    drawFleetGroup(ctx, w * 0.76, h * 0.14, "🇯🇵 일본 해상지원", "#8bd3ff", (t + 0.3) % 1, 1.15);
     drawMovingArrow(ctx, w * 0.75, h * 0.19, w * 0.61, h * 0.31, "#8bd3ff", t);
   }
 
@@ -260,55 +275,59 @@ function drawMovingArrow(ctx, x1, y1, x2, y2, color, t) {
   ctx.restore();
 }
 
-function drawFleetGroup(ctx, x, y, label, color, t) {
+function drawFleetGroup(ctx, x, y, label, color, t, sizeMul = 1) {
   ctx.save();
   ctx.globalAlpha = 0.92;
-  drawShipIcon(ctx, x, y, color, "CV");
-  drawShipIcon(ctx, x - 34, y + 22, color, "DD");
-  drawShipIcon(ctx, x + 30, y + 24, color, "DD");
-  ctx.fillStyle = "rgba(3, 12, 24, .72)";
+  drawShipIcon(ctx, x, y, color, "CV", sizeMul);
+  drawShipIcon(ctx, x - 34 * sizeMul, y + 22 * sizeMul, color, "DD", sizeMul * 0.85);
+  drawShipIcon(ctx, x + 30 * sizeMul, y + 24 * sizeMul, color, "DD", sizeMul * 0.85);
+  // 라벨 박스
+  const lblW = 116 * Math.max(1, sizeMul * 0.95);
+  ctx.fillStyle = "rgba(3, 12, 24, .78)";
   ctx.strokeStyle = color;
-  ctx.lineWidth = 1;
-  roundRect(ctx, x - 58, y - 48, 116, 22, 9);
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, x - lblW / 2, y - 48 * sizeMul, lblW, 22, 9);
   ctx.fill();
   ctx.stroke();
   ctx.fillStyle = "#eaf3ff";
-  ctx.font = "700 11px system-ui";
+  ctx.font = `700 ${Math.round(11 * Math.max(1, sizeMul * 0.95))}px system-ui`;
   ctx.textAlign = "center";
-  ctx.fillText(label, x, y - 33);
+  ctx.fillText(label, x, y - 33 * sizeMul);
   ctx.restore();
 }
 
-function drawShipIcon(ctx, x, y, color, label = "") {
+function drawShipIcon(ctx, x, y, color, label = "", sizeMul = 1) {
   ctx.save();
   ctx.fillStyle = color;
   ctx.strokeStyle = "rgba(255,255,255,.85)";
-  ctx.lineWidth = 1.2;
+  ctx.lineWidth = 1.2 * Math.max(1, sizeMul * 0.9);
+  const s = sizeMul;
   ctx.beginPath();
-  ctx.moveTo(x - 15, y + 5);
-  ctx.lineTo(x + 12, y + 5);
-  ctx.lineTo(x + 18, y);
-  ctx.lineTo(x + 4, y - 6);
-  ctx.lineTo(x - 12, y - 5);
+  ctx.moveTo(x - 15 * s, y + 5 * s);
+  ctx.lineTo(x + 12 * s, y + 5 * s);
+  ctx.lineTo(x + 18 * s, y);
+  ctx.lineTo(x + 4 * s, y - 6 * s);
+  ctx.lineTo(x - 12 * s, y - 5 * s);
   ctx.closePath();
   ctx.fill();
   ctx.stroke();
   if (label) {
     ctx.fillStyle = "#fff";
-    ctx.font = "700 9px system-ui";
+    ctx.font = `700 ${Math.round(9 * Math.max(1, s * 0.85))}px system-ui`;
     ctx.textAlign = "center";
-    ctx.fillText(label, x, y - 10);
+    ctx.fillText(label, x, y - 10 * s);
   }
   ctx.restore();
 }
 
-function drawAircraftIcon(ctx, x, y, color) {
+function drawAircraftIcon(ctx, x, y, color, sizeMul = 1) {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(-0.25);
+  ctx.scale(sizeMul, sizeMul);
   ctx.fillStyle = color;
   ctx.strokeStyle = "rgba(255,255,255,.85)";
-  ctx.lineWidth = 1;
+  ctx.lineWidth = 1 / sizeMul;
   ctx.beginPath();
   ctx.moveTo(16, 0);
   ctx.lineTo(-8, -5);
@@ -339,12 +358,29 @@ function drawSupportNode(ctx, x, y, label, color) {
 
 
 function drawProvinces(ctx, w, h, state, meta) {
+  const pulseT = (Date.now() % 1400) / 1400; // 0~1 주기
+  const recentBattles = new Set(state.persistent?.recentBattles || []);
+
   for (const [id, pos] of Object.entries(PROVINCE_LAYOUT)) {
     const province = state.provinces[id];
     const x = pos.x * w;
     const y = pos.y * h;
     const selected = meta.selectedProvince === id;
     const color = colorForProvince(province);
+
+    // v0.3.10: 최근 전투 pulse — 외곽에 빨간 파동 링
+    if (recentBattles.has(id)) {
+      const p = Math.sin(pulseT * Math.PI * 2); // -1..1
+      const ringR = pos.r + 14 + p * 6;
+      const alpha = 0.42 + p * 0.20;
+      ctx.save();
+      ctx.strokeStyle = `rgba(255, 110, 110, ${Math.max(0.18, alpha)})`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(x, y, ringR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     ctx.save();
     ctx.shadowBlur = selected ? 24 : 12;
@@ -365,6 +401,30 @@ function drawProvinces(ctx, w, h, state, meta) {
       ctx.beginPath();
       ctx.arc(x, y, pos.r + 8, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (idx / 4));
       ctx.stroke();
+    }
+
+    // v0.3.10: 교두보 링 — beachhead 이상이면 외곽 빨간 링 추가
+    const ctrl = province?.controlStage;
+    if (ctrl === "beachhead_established" || ctrl === "china_control") {
+      const ringR = pos.r + 5;
+      const ringColor = ctrl === "china_control" ? "rgba(255, 65, 80, .95)" : "rgba(255, 105, 115, .82)";
+      const ringWidth = ctrl === "china_control" ? 3.5 : 3;
+      ctx.save();
+      ctx.strokeStyle = ringColor;
+      ctx.lineWidth = ringWidth;
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.arc(x, y, ringR, 0, Math.PI * 2);
+      ctx.stroke();
+      // 두 번째 더 안쪽 링으로 강조
+      if (ctrl === "china_control") {
+        ctx.strokeStyle = "rgba(255, 90, 105, .55)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(x, y, ringR + 4, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
     }
 
     ctx.shadowBlur = 0;

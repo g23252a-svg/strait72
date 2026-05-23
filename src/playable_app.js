@@ -13,6 +13,18 @@ import { GAME_RULES, BUILD_TAG, BUILD_DATE, BUILD_FULL, TOTAL_GAME_HOURS, format
 import { AXIS_DEFAULT_TARGETS, chooseBestTarget } from "./combat_resolver.js";
 import { initializeDecks, DRAW_PER_TURN } from "./deck_state.js";
 import { buildCardTooltipHTML } from "./card_tooltip.js";
+import {
+  chooseChinaCards as aiChooseChinaCards,
+  chooseTaiwanCards as aiChooseTaiwanCards,
+  pickSelectedProvince as aiPickSelectedProvince,
+  decideChinaAxis,
+  decideTaiwanFocus
+} from "./ai_decisions.js";
+import {
+  SIDES, DIFFICULTIES,
+  loadLastChoice, saveLastChoice,
+  createCampaignState, isPlayerSide, isAISide
+} from "./campaign_state.js";
 
 const DATA_PATHS = {
   axes: "./data/axes.json",
@@ -26,6 +38,7 @@ const dom = {};
 let data = {};
 let indices = {};
 let state = null;
+let campaign = null;  // v0.4.0-a: 진영/난이도
 let selectedProvince = "keelung";
 const recentUiPicks = { china: [], taiwan: [] };
 let canvasLoopStarted = false;
@@ -34,7 +47,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.3.9";
+const EXPECTED_BUILD = "v0.4.0-a";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -79,9 +92,15 @@ async function init() {
   bindDom();
   renderBuildBadge();
   await loadData();
-  resetGame();
-  bindEvents();
-  startCanvasLoop();
+
+  // v0.4.0-a: 진영 선택 화면을 먼저 보여줌
+  showSideSelectModal((selectedSide, difficulty) => {
+    campaign = createCampaignState(selectedSide, difficulty);
+    saveLastChoice(selectedSide, difficulty);
+    resetGame();
+    bindEvents();
+    startCanvasLoop();
+  });
 }
 
 function renderBuildBadge() {
@@ -98,6 +117,237 @@ function renderBuildBadge() {
   `;
   badge.textContent = `BUILD ${BUILD_FULL} · RULES ${GAME_RULES.totalTurns}턴 × ${GAME_RULES.hoursPerTurn}h`;
   titleEl.appendChild(badge);
+}
+
+// v0.4.0-a: 진영 선택 모달
+function showSideSelectModal(onConfirm) {
+  const last = loadLastChoice();
+  const overlay = document.createElement("div");
+  overlay.id = "sideSelectOverlay";
+  overlay.style.cssText = `
+    position: fixed; inset: 0; z-index: 5000;
+    background: radial-gradient(ellipse at top, rgba(20,35,60,.96), rgba(3,8,18,.98));
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px; overflow-y: auto;
+  `;
+
+  const sideButtons = Object.values(SIDES).map(s => `
+    <button class="side-card" data-side="${s.id}">
+      <div class="side-name">${s.name}</div>
+      <div class="side-desc">${s.description}</div>
+    </button>
+  `).join("");
+
+  const diffButtons = Object.values(DIFFICULTIES).map(d => `
+    <button class="diff-pill" data-diff="${d.id}"${d.id === "normal" ? ' data-selected="true"' : ""}>
+      ${d.name}
+    </button>
+  `).join("");
+
+  const quickStartHtml = last ? `
+    <div class="quick-start">
+      <button id="quickStartBtn" class="primary">
+        이전 설정으로 빠른 시작
+        <span>${SIDES[last.side]?.name} · ${DIFFICULTIES[last.difficulty]?.name}</span>
+      </button>
+      <button id="newChoiceBtn" class="secondary">새로 선택하기</button>
+    </div>
+  ` : "";
+
+  overlay.innerHTML = `
+    <div class="side-modal">
+      <h2>해협의 72시간</h2>
+      <p class="subtitle">진영 선택</p>
+      ${quickStartHtml}
+      <div class="side-list" id="sideList">${sideButtons}</div>
+      <div class="diff-group">
+        <p class="diff-label">난이도 (v0.4.0-a에서는 UI만, 실 적용은 다음 패치)</p>
+        <div class="diff-pills" id="diffPills">${diffButtons}</div>
+      </div>
+      <button id="startGameBtn" class="primary start-btn" disabled>시작</button>
+    </div>
+
+    <style>
+      .side-modal {
+        max-width: 580px; width: 100%;
+        background: rgba(13, 24, 42, 0.96);
+        border: 1px solid rgba(124, 171, 220, 0.32);
+        border-radius: 18px;
+        padding: 32px 28px;
+        color: #eaf3ff;
+        box-shadow: 0 30px 80px rgba(0,0,0,.6);
+      }
+      .side-modal h2 {
+        margin: 0 0 4px;
+        font-size: 26px;
+        font-weight: 800;
+        text-align: center;
+        color: #ffd66b;
+        letter-spacing: 1px;
+      }
+      .side-modal .subtitle {
+        margin: 0 0 22px;
+        text-align: center;
+        color: rgba(234, 243, 255, .55);
+        font-size: 12.5px;
+        letter-spacing: 3px;
+      }
+      .side-modal .quick-start {
+        display: grid; gap: 8px;
+        margin-bottom: 22px;
+        padding-bottom: 18px;
+        border-bottom: 1px solid rgba(255,255,255,.08);
+      }
+      .side-modal .quick-start button.primary {
+        display: flex; flex-direction: column; align-items: center;
+        gap: 4px;
+        background: linear-gradient(180deg, #5aa9ff, #3d83cf);
+        color: #fff;
+        border: 0;
+        padding: 14px;
+        border-radius: 12px;
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .side-modal .quick-start button.primary span {
+        font-size: 11px;
+        font-weight: 500;
+        opacity: .85;
+      }
+      .side-modal .quick-start button.secondary {
+        background: transparent;
+        color: rgba(234,243,255,.55);
+        border: 1px solid rgba(255,255,255,.12);
+        padding: 8px;
+        border-radius: 8px;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .side-modal .side-list {
+        display: grid; gap: 10px;
+        margin-bottom: 20px;
+      }
+      .side-modal .side-card {
+        background: rgba(255,255,255,.04);
+        border: 1.5px solid rgba(255,255,255,.10);
+        border-radius: 12px;
+        padding: 14px 16px;
+        text-align: left;
+        color: inherit;
+        cursor: pointer;
+        transition: all .15s;
+      }
+      .side-modal .side-card:hover {
+        background: rgba(124, 171, 220, .12);
+        border-color: rgba(124, 171, 220, .55);
+      }
+      .side-modal .side-card[data-selected="true"] {
+        background: rgba(124, 171, 220, .20);
+        border-color: #7cabdc;
+        box-shadow: 0 0 0 1px #7cabdc inset;
+      }
+      .side-modal .side-name {
+        font-size: 15px;
+        font-weight: 700;
+        margin-bottom: 4px;
+        color: #ffd66b;
+      }
+      .side-modal .side-desc {
+        font-size: 11.5px;
+        color: rgba(234,243,255,.72);
+        line-height: 1.5;
+      }
+      .side-modal .diff-group { margin-bottom: 22px; }
+      .side-modal .diff-label {
+        font-size: 11px;
+        color: rgba(234,243,255,.45);
+        margin: 0 0 8px;
+      }
+      .side-modal .diff-pills {
+        display: flex; gap: 8px;
+      }
+      .side-modal .diff-pill {
+        flex: 1;
+        background: rgba(255,255,255,.04);
+        border: 1.5px solid rgba(255,255,255,.10);
+        border-radius: 8px;
+        padding: 9px;
+        color: inherit;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+        transition: all .15s;
+      }
+      .side-modal .diff-pill:hover { border-color: rgba(124, 171, 220, .55); }
+      .side-modal .diff-pill[data-selected="true"] {
+        background: rgba(124, 171, 220, .20);
+        border-color: #7cabdc;
+      }
+      .side-modal .start-btn {
+        width: 100%;
+        background: linear-gradient(180deg, #ffd66b, #d9a939);
+        color: #1a1408;
+        border: 0;
+        padding: 14px;
+        border-radius: 12px;
+        font-size: 15px;
+        font-weight: 800;
+        cursor: pointer;
+        letter-spacing: 1px;
+        transition: opacity .15s;
+      }
+      .side-modal .start-btn:disabled {
+        opacity: .4; cursor: not-allowed;
+      }
+    </style>
+  `;
+  document.body.appendChild(overlay);
+
+  let selectedSide = null;
+  let selectedDifficulty = "normal";
+  const startBtn = overlay.querySelector("#startGameBtn");
+
+  function updateStartBtnState() {
+    startBtn.disabled = !selectedSide;
+  }
+
+  overlay.querySelector("#sideList").addEventListener("click", (e) => {
+    const card = e.target.closest(".side-card");
+    if (!card) return;
+    overlay.querySelectorAll(".side-card").forEach(el => el.removeAttribute("data-selected"));
+    card.setAttribute("data-selected", "true");
+    selectedSide = card.dataset.side;
+    updateStartBtnState();
+  });
+
+  overlay.querySelector("#diffPills").addEventListener("click", (e) => {
+    const pill = e.target.closest(".diff-pill");
+    if (!pill) return;
+    overlay.querySelectorAll(".diff-pill").forEach(el => el.removeAttribute("data-selected"));
+    pill.setAttribute("data-selected", "true");
+    selectedDifficulty = pill.dataset.diff;
+  });
+
+  startBtn.addEventListener("click", () => {
+    if (!selectedSide) return;
+    overlay.remove();
+    onConfirm(selectedSide, selectedDifficulty);
+  });
+
+  const quickBtn = overlay.querySelector("#quickStartBtn");
+  if (quickBtn && last) {
+    quickBtn.addEventListener("click", () => {
+      overlay.remove();
+      onConfirm(last.side, last.difficulty);
+    });
+  }
+  const newBtn = overlay.querySelector("#newChoiceBtn");
+  if (newBtn) {
+    newBtn.addEventListener("click", () => {
+      overlay.querySelector(".quick-start").style.display = "none";
+    });
+  }
 }
 
 function bindDom() {
@@ -140,9 +390,94 @@ function resetGame() {
   initializeDecks(state, data.cardsChina, data.cardsTaiwan);
   selectedProvince = "keelung";
   fillSelectors();
+  renderCampaignBadge();
+  applySideLock();
   renderCards();
   applySuggestion(false);
   render();
+}
+
+// v0.4.0-a: 진영/난이도 배지를 헤더 빌드 배지 옆에 추가
+function renderCampaignBadge() {
+  const titleEl = document.querySelector(".title");
+  if (!titleEl) return;
+  let badge = titleEl.querySelector(".campaign-badge");
+  if (!badge) {
+    badge = document.createElement("div");
+    badge.className = "campaign-badge";
+    badge.style.cssText = `
+      margin-top: 4px; font-size: 11px;
+      letter-spacing: .3px; font-family: monospace;
+    `;
+    titleEl.appendChild(badge);
+  }
+  if (!campaign) { badge.textContent = ""; return; }
+  const sideName = SIDES[campaign.selectedSide]?.name || campaign.selectedSide;
+  const diffName = DIFFICULTIES[campaign.difficulty]?.name || campaign.difficulty;
+  let color = "#7cabdc";
+  if (campaign.selectedSide === "taiwan") color = "#80efb1";
+  else if (campaign.selectedSide === "china") color = "#ff8b94";
+  else color = "rgba(255,255,255,.55)";
+  badge.innerHTML = `<span style="color:${color};font-weight:700">▸ ${sideName}</span> <span style="color:rgba(255,255,255,.5)">· ${diffName}</span>`;
+}
+
+// v0.4.0-a: 진영별 UI 잠금 - 상대 진영의 카드/축/방어중점 숨김/비활성화
+function applySideLock() {
+  if (!campaign) return;
+  const chinaIsAI = isAISide(campaign, "china");
+  const taiwanIsAI = isAISide(campaign, "taiwan");
+
+  // 중국 카드 패널
+  const chinaCardsBox = dom.chinaCards?.closest(".pane") || dom.chinaCards?.parentElement;
+  if (chinaIsAI) {
+    setSideCovered("china", "비공개 작전 준비 중");
+    dom.chinaAxisSelect?.setAttribute("disabled", "");
+  } else {
+    setSideCovered("china", null);
+    dom.chinaAxisSelect?.removeAttribute("disabled");
+  }
+
+  // 대만 카드 패널
+  if (taiwanIsAI) {
+    setSideCovered("taiwan", "방어 태세 준비 중");
+    dom.taiwanFocusSelect?.setAttribute("disabled", "");
+  } else {
+    setSideCovered("taiwan", null);
+    dom.taiwanFocusSelect?.removeAttribute("disabled");
+  }
+}
+
+function setSideCovered(side, message) {
+  const cardsEl = side === "china" ? dom.chinaCards : dom.taiwanCards;
+  if (!cardsEl) return;
+  let cover = cardsEl.parentElement?.querySelector(`.side-cover[data-side="${side}"]`);
+  if (!message) {
+    if (cover) cover.remove();
+    cardsEl.style.display = "";
+    return;
+  }
+  cardsEl.style.display = "none";
+  if (!cover) {
+    cover = document.createElement("div");
+    cover.className = "side-cover";
+    cover.dataset.side = side;
+    cover.style.cssText = `
+      padding: 24px 16px; margin-top: 8px;
+      background: linear-gradient(135deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border: 1px dashed rgba(255,255,255,.18);
+      border-radius: 10px;
+      text-align: center;
+      color: rgba(234, 243, 255, .55);
+      font-size: 13px;
+      letter-spacing: .8px;
+    `;
+    cardsEl.parentElement?.appendChild(cover);
+  }
+  cover.innerHTML = `
+    <div style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:6px;letter-spacing:2px;">${side === "china" ? "PLA" : "ROC"}</div>
+    <div>${message}</div>
+    <div style="font-size:10.5px;color:rgba(255,255,255,.32);margin-top:8px;">AI가 자동으로 작전을 결정합니다</div>
+  `;
 }
 
 function bindEvents() {
@@ -152,7 +487,15 @@ function bindEvents() {
     runManualTurn();
   });
   dom.resetBtn.addEventListener("click", () => {
-    if (confirm("현재 판을 버리고 새 게임을 시작할까요?")) resetGame();
+    if (!confirm("현재 판을 버리고 새 게임을 시작할까요?")) return;
+    // v0.4.0-a: 진영 선택 다시
+    showSideSelectModal((selectedSide, difficulty) => {
+      campaign = createCampaignState(selectedSide, difficulty);
+      saveLastChoice(selectedSide, difficulty);
+      resetGame();
+      dom.runTurnBtn.disabled = false;
+      dom.autoTurnBtn.disabled = false;
+    });
   });
   dom.suggestBtn.addEventListener("click", () => {
     applySuggestion(true);
@@ -340,8 +683,11 @@ function applySuggestion(selectCards = true) {
 
   if (selectCards) {
     clearCardChecks();
-    if (axisId) autoPickCards("china", axisId);
-    if (focusId) autoPickCards("taiwan", focusId);
+    // v0.4.0-a: AI 측은 카드 보이지 않으니 자동 선택 의미 없음 (run시 덮어씀)
+    const chinaPlayable = !campaign || !isAISide(campaign, "china");
+    const taiwanPlayable = !campaign || !isAISide(campaign, "taiwan");
+    if (chinaPlayable && axisId) autoPickCards("china", axisId);
+    if (taiwanPlayable && focusId) autoPickCards("taiwan", focusId);
   }
 }
 
@@ -409,6 +755,26 @@ function runManualTurn() {
     chinaCards: checkedCardIds("china"),
     taiwanCards: checkedCardIds("taiwan")
   };
+
+  // v0.4.0-a: AI 측이면 결정을 자동으로 덮어씀
+  if (campaign && isAISide(campaign, "china")) {
+    const axisId = decideChinaAxis(state, data.axes);
+    decisions.chinaAxis = axisId;
+    decisions.chinaCards = aiChooseChinaCards(state, axisId, indices.cardIndex);
+    // selectedProvince는 대만 focus 우선, 아니면 AI 추천 지역
+    if (campaign.selectedSide === "china") {
+      // 중국 플레이어 → selectedProvince는 플레이어가 고름, 유지
+    } else {
+      // 양쪽 AI 또는 대만 플레이어 → AI 추천 사용
+      const focusObj = { focus: decisions.taiwanFocus, mode: "province" };
+      decisions.selectedProvince = aiPickSelectedProvince(state, axisId, focusObj, indices.axisIndex) || decisions.selectedProvince;
+    }
+  }
+  if (campaign && isAISide(campaign, "taiwan")) {
+    const { focus, focusId } = decideTaiwanFocus(state);
+    decisions.taiwanFocus = focusId;
+    decisions.taiwanCards = aiChooseTaiwanCards(state, decisions.chinaAxis, focus, indices.cardIndex);
+  }
 
   rememberPicks("china", decisions.chinaCards);
   rememberPicks("taiwan", decisions.taiwanCards);

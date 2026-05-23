@@ -14,13 +14,15 @@
 import fs from "node:fs";
 import { createInitialState, buildCardIndex, buildAxisIndex } from "./state.js";
 import { runTurn } from "./turn_resolver.js";
-import { GAME_RULES, formatGameTime, formatTurnCounter, chinaHoursRemaining } from "./game_rules.js";
+import { GAME_RULES, BUILD_FULL, formatGameTime, formatTurnCounter, chinaHoursRemaining } from "./game_rules.js";
 import { initializeDecks } from "./deck_state.js";
 import {
-  suggestChinaAxis,
-  suggestTaiwanFocus,
-  scoreChinaAttackTarget
-} from "./target_selector.js";
+  chooseChinaCards as aiChooseChinaCards,
+  chooseTaiwanCards as aiChooseTaiwanCards,
+  pickSelectedProvince as aiPickSelectedProvince,
+  decideChinaAxis,
+  decideTaiwanFocus
+} from "./ai_decisions.js";
 
 const dataDir = new URL("../data/", import.meta.url);
 const provinces = JSON.parse(fs.readFileSync(new URL("provinces.json", dataDir), "utf8"));
@@ -73,160 +75,25 @@ function card(id) {
   return cardIndex.get(id);
 }
 
-function getHandCards(state, side) {
-  const ids = state.decks?.[side]?.hand || [];
-  return ids.map((id) => card(id)).filter(Boolean);
-}
-
-function canAfford(state, side, c) {
-  const cost = c.cost || {};
-  for (const [key, amount] of Object.entries(cost)) {
-    let gaugeKey = null;
-    if (key === "tempo") gaugeKey = "chinaTempo";
-    else if (key === "supply") gaugeKey = "chinaSupply";
-    else if (key === "command") gaugeKey = side === "china" ? "chinaTempo" : "taiwanCommand";
-    else if (key === "reserveTroops") gaugeKey = side === "china" ? "chinaReserveTroops" : "taiwanReserveTroops";
-    else if (key === "internationalRequest") gaugeKey = "taiwanInternationalRequest";
-    if (gaugeKey && (state.gauges[gaugeKey] || 0) < amount) return false;
-  }
-  return true;
-}
-
-function pickUnique(ids, max) {
-  const out = [];
-  for (const id of ids) {
-    if (!id) continue;
-    if (out.includes(id)) continue;
-    out.push(id);
-    if (out.length >= max) break;
-  }
-  return out;
-}
-
+// v0.4.0-a: AI 의사결정 함수들은 src/ai_decisions.js로 이동.
+// 시뮬 내부에서는 어댑터로 호출만.
 function chooseChinaCards(state, axisId) {
-  const hand = getHandCards(state, "china").filter((c) => canAfford(state, "china", c));
-  const has = (id) => hand.some((c) => c.id === id);
-  const wanted = [];
-
-  // 축별 핵심 카드 우선.
-  if (axisId === "north_pressure") {
-    if (has("china_blitz_order")) wanted.push("china_blitz_order");
-    if (has("china_north_assault")) wanted.push("china_north_assault");
-    if (has("china_missile_pressure")) wanted.push("china_missile_pressure");
-  } else if (axisId === "south_landing") {
-    if (has("china_blitz_order")) wanted.push("china_blitz_order");
-    if (has("china_south_landing_prep")) wanted.push("china_south_landing_prep");
-    if (state.gauges.chinaSupply < 70 && has("china_supply_line_extension")) wanted.push("china_supply_line_extension");
-  } else if (axisId === "naval_blockade") {
-    if (has("china_naval_blockade_intensify")) wanted.push("china_naval_blockade_intensify");
-    if (has("china_night_operation")) wanted.push("china_night_operation");
-  } else if (axisId === "information_warfare") {
-    if (has("china_cyber_attack")) wanted.push("china_cyber_attack");
-    if (has("china_missile_pressure")) wanted.push("china_missile_pressure");
-  } else if (axisId === "diplomatic_pressure") {
-    if (has("china_diplomatic_pivot")) wanted.push("china_diplomatic_pivot");
-    if (has("china_supply_line_extension")) wanted.push("china_supply_line_extension");
-  }
-
-  // 보급/템포 보정 카드.
-  if (state.gauges.chinaSupply < 55 && has("china_supply_line_extension")) wanted.push("china_supply_line_extension");
-  if (state.gauges.chinaTempo > 35 && has("china_night_operation")) wanted.push("china_night_operation");
-
-  // 손패가 남았는데 축 매칭 카드가 있으면 채움.
-  const preferred = hand
-    .filter((c) => c.preferredAxis === axisId)
-    .map((c) => c.id);
-  wanted.push(...preferred);
-
-  // 그래도 부족하면 범용 공격/지원.
-  wanted.push(...hand
-    .filter((c) => ["attack", "ranged", "support", "modifier", "standard"].includes(c.type))
-    .map((c) => c.id));
-
-  return pickUnique(wanted, 2);
+  return aiChooseChinaCards(state, axisId, cardIndex);
 }
-
 function chooseTaiwanCards(state, axisId, focus) {
-  const hand = getHandCards(state, "taiwan").filter((c) => canAfford(state, "taiwan", c));
-  const has = (id) => hand.some((c) => c.id === id);
-  const wanted = [];
-  const g = state.gauges;
-
-  // v0.3.8c: 수도권 위기 감지 - 단독 가드 (focus 변경 없음)
-  //   - 타이베이 sea_superiority 이상
-  //   - 또는 지룽/타오위안 beachhead 이상
-  //   - 또는 capitalPressureTurns >= 1 (v0.3.8b 트래커)
-  // 위기 상태이면 방어/복구 카드를 외교/사기 카드보다 먼저 사용.
-  const stages = ["none", "sea_superiority", "landing_attempt", "beachhead", "inland_expansion"];
-  const sIdx = (p) => p ? stages.indexOf(p.landingStage || "none") : 0;
-  const capitalCrisis = (
-    sIdx(state.provinces.taipei) >= 1 ||
-    sIdx(state.provinces.keelung) >= 3 ||
-    sIdx(state.provinces.taoyuan) >= 3 ||
-    (state.persistent?.capitalPressureTurns || 0) >= 1
-  );
-
-  if (capitalCrisis) {
-    // 위기 시 우선순위: 방어 → 복구 → 사기 → 외교
-    if (has("taiwan_north_defense_buildup")) wanted.push("taiwan_north_defense_buildup");
-    if (has("taiwan_mobile_reserve_deploy")) wanted.push("taiwan_mobile_reserve_deploy");
-    if (has("taiwan_backup_network")) wanted.push("taiwan_backup_network");
-    if (has("taiwan_emergency_restoration")) wanted.push("taiwan_emergency_restoration");
-    if (has("taiwan_president_speech")) wanted.push("taiwan_president_speech");
-    if (has("taiwan_international_appeal")) wanted.push("taiwan_international_appeal");
-  }
-
-  // 생존 복구 우선.
-  if ((g.taiwanCommand <= 75 || g.taiwanGovernment <= 80) && has("taiwan_emergency_restoration")) {
-    wanted.push("taiwan_emergency_restoration");
-  }
-
-  // 중국 축 대응.
-  if (axisId === "information_warfare") {
-    if (has("taiwan_backup_network")) wanted.push("taiwan_backup_network");
-    if (has("taiwan_distributed_command")) wanted.push("taiwan_distributed_command");
-  } else if (axisId === "north_pressure") {
-    if (has("taiwan_north_defense_buildup")) wanted.push("taiwan_north_defense_buildup");
-    if (has("taiwan_port_defense_buildup")) wanted.push("taiwan_port_defense_buildup");
-  } else if (axisId === "south_landing" || axisId === "naval_blockade") {
-    if (has("taiwan_port_defense_buildup")) wanted.push("taiwan_port_defense_buildup");
-    if (has("taiwan_mobile_reserve_deploy") && focus?.focus) wanted.push("taiwan_mobile_reserve_deploy");
-  } else if (axisId === "diplomatic_pressure") {
-    if (has("taiwan_international_appeal")) wanted.push("taiwan_international_appeal");
-    if (has("taiwan_president_speech")) wanted.push("taiwan_president_speech");
-  }
-
-  // 개입 게이지가 낮으면 외교 카드 보강.
-  if (g.usIntervention < 70 && has("taiwan_international_appeal")) wanted.push("taiwan_international_appeal");
-  if (g.taiwanMorale < 75 && has("taiwan_president_speech")) wanted.push("taiwan_president_speech");
-
-  // 마지막으로 정보/감시 카드.
-  if (has("taiwan_coastal_surveillance")) wanted.push("taiwan_coastal_surveillance");
-
-  return pickUnique(wanted, 2);
+  return aiChooseTaiwanCards(state, axisId, focus, cardIndex);
 }
-
 function pickSelectedProvince(state, axisId, focus) {
-  // 대만 방어 중점이 지역이면 그 지역을 selectedProvince로 둔다.
-  if (focus?.mode === "province" && state.provinces[focus.focus]) return focus.focus;
-
-  // 아니면 중국의 가장 유망한 상륙 가능 표적을 임시 선택.
-  const axis = axisIndex.get(axisId);
-  const candidates = Object.values(state.provinces)
-    .filter((p) => p.id !== "strait" && p.controlStage !== "china_control")
-    .map((p) => ({ id: p.id, score: scoreChinaAttackTarget(state, p, null, axis) }))
-    .sort((a, b) => b.score - a.score);
-  return candidates[0]?.id || null;
+  return aiPickSelectedProvince(state, axisId, focus, axisIndex);
 }
 
 function buildDecision(state) {
-  const axisSuggestion = suggestChinaAxis(state, axes);
-  const axisId = axisSuggestion.axisId || axisSuggestion.id || axisSuggestion;
-  const focus = suggestTaiwanFocus(state);
+  const axisId = decideChinaAxis(state, axes);
+  const { focus, focusId } = decideTaiwanFocus(state);
   const selectedProvince = pickSelectedProvince(state, axisId, focus);
   return {
     chinaAxis: axisId,
-    taiwanFocus: focus?.focus || null,
+    taiwanFocus: focusId,
     selectedProvince,
     chinaCards: chooseChinaCards(state, axisId),
     taiwanCards: chooseTaiwanCards(state, axisId, focus)
@@ -361,7 +228,7 @@ for (let i = 0; i < RUNS; i++) {
 
 const summary = aggregate(results);
 
-console.log("\n=== Strait 72 v0.3.5 balance simulation ===");
+console.log(`\n=== Strait 72 ${BUILD_FULL} balance simulation ===`);
 console.log(`runs=${RUNS} seed=${BASE_SEED} totalTurns=${GAME_RULES.totalTurns} hoursPerTurn=${GAME_RULES.hoursPerTurn}`);
 console.log("\n[Outcome]");
 for (const [outcome, count] of Object.entries(summary.outcomeCounts)) {

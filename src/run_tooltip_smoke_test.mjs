@@ -7,21 +7,27 @@ const cc = JSON.parse(fs.readFileSync(new URL("cards_china.json", dataDir), "utf
 const ct = JSON.parse(fs.readFileSync(new URL("cards_taiwan.json", dataDir), "utf8"));
 const provinces = JSON.parse(fs.readFileSync(new URL("provinces.json", dataDir), "utf8"));
 
-// 1. 모든 카드의 모든 effect 키가 EFFECT_LABELS에 있는지
+// 1. 모든 카드의 모든 effect 키가 EFFECT_LABELS에 있는지 (중첩 포함)
 let missing = new Set();
+function collectKeys(obj, target) {
+  for (const [k, v] of Object.entries(obj || {})) {
+    target.add(k);
+    if (v && typeof v === "object" && !Array.isArray(v)) collectKeys(v, target);
+  }
+}
 for (const c of [...cc, ...ct]) {
-  const allEffects = [
-    ...Object.keys(c.effects || {}),
-    ...Object.keys(c.successEffects || {}),
-    ...Object.keys(c.failureEffects || {}),
-    ...Object.keys(c.riskOnFailure || {})
-  ];
-  for (const k of allEffects) if (!EFFECT_LABELS[k]) missing.add(k);
+  const all = new Set();
+  collectKeys(c.effects, all);
+  collectKeys(c.successEffects, all);
+  collectKeys(c.failureEffects, all);
+  collectKeys(c.riskOnFailure, all);
+  for (const k of all) if (!EFFECT_LABELS[k]) missing.add(k);
 }
 if (missing.size) {
-  console.warn("⚠ EFFECT_LABELS에 누락된 키 (자동 번역 실패):", [...missing]);
+  console.warn("⚠ EFFECT_LABELS에 누락된 키 (중첩 포함):", [...missing]);
+  process.exitCode = 1;
 } else {
-  console.log("✓ 모든 effect 키 EFFECT_LABELS에 매핑됨");
+  console.log("✓ 모든 effect 키 (중첩 포함) EFFECT_LABELS에 매핑됨");
 }
 
 // 2. 모든 카드의 cost 키가 COST_LABELS에 있는지

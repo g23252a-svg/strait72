@@ -45,7 +45,12 @@ export const EFFECT_LABELS = {
   deceptionTarget:                   { label: "기만 대상",              suffix: "" },
   ifChinaMisreads:                   { label: "중국 오판 시 추가",      suffix: "" },
   ifTaiwanMisreads:                  { label: "대만 오판 시 추가",      suffix: "" },
-  revealOpponentBluff:               { label: "상대 블러프 공개",       suffix: "" }
+  revealOpponentBluff:               { label: "상대 블러프 공개",       suffix: "" },
+
+  // 중첩 effect (ifXxxMisreads 내부 등)
+  nextTurnAttackBonus:               { label: "다음 턴 공격력 보너스",  suffix: "" },
+  nextTurnCounterAttackBonus:        { label: "다음 턴 반격 보너스",    suffix: "" },
+  taiwanReserveLockout:              { label: "대만 예비군 봉쇄",       suffix: "" }
 };
 
 export const COST_LABELS = {
