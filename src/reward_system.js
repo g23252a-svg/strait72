@@ -146,7 +146,7 @@ function applyInstantReward(state, reward) {
 
 // 보상 적용 후 로그 메시지 (사용자 노출용)
 export function describeRewardApplication(reward, result) {
-  const parts = [`보상 적용: ${reward.name}`];
+  const parts = [result?.applied === "persistent" ? `보상 활성화: ${reward.name}` : `보상 적용: ${reward.name}`];
   if (result?.applied === "instant" && result.details) {
     const lines = [];
     let cappedCount = 0;

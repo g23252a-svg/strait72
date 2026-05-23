@@ -90,6 +90,61 @@ if (typeof report.gaugeDeltas !== "object") { console.error("FAIL gaugeDeltas");
 if (!Array.isArray(report.events)) { console.error("FAIL events"); process.exit(1); }
 if (!Array.isArray(report.occupationChanges)) { console.error("FAIL occupations"); process.exit(1); }
 if (!Array.isArray(report.majorBattles)) { console.error("FAIL battles"); process.exit(1); }
+if (!report.dayProgress || typeof report.dayProgress !== "object") { console.error("FAIL dayProgress"); process.exit(1); }
 if (!report.interpretation || !report.interpretation.taiwan) { console.error("FAIL interpretation"); process.exit(1); }
+
+// 7. c2-b1.2: DAY 진행 통계 집계 검증
+const progressState = createInitialState({ provinces, gameRules: GAME_RULES, axes, cardsChina: cc, cardsTaiwan: ct, events });
+progressState.log.push({
+  turn: 1,
+  phase: 1,
+  name: "information",
+  snapshot: { ...progressState.gauges },
+  provincesSnapshot: {}
+});
+progressState.log.push({
+  turn: 1,
+  phase: 4,
+  name: "operation_resolution",
+  operations: [
+    "중국 덱 소진: 버림더미 9장 셔플 복귀",
+    "남부 상륙 보류: 유효한 지역 타깃 없음"
+  ],
+  combatResults: []
+});
+progressState.log.push({
+  turn: 2,
+  phase: 1,
+  name: "information",
+  snapshot: { ...progressState.gauges },
+  provincesSnapshot: {},
+  perTurnApplied: [{
+    rewardId: "tw_humanitarian_campaign",
+    rewardName: "인도주의 캠페인",
+    details: {
+      usIntervention: { before: 10, after: 12, delta: 2, requested: 2 },
+      japanIntervention: { before: 20, after: 21, delta: 1, requested: 1 }
+    }
+  }]
+});
+progressState.log.push({
+  turn: 2,
+  phase: 4,
+  name: "operation_resolution",
+  operations: ["남부 상륙 보류: 유효한 지역 타깃 없음"],
+  combatResults: []
+});
+const progressReport = buildDayReport(progressState, 1, events);
+const progress = progressReport.dayProgress;
+if (progress.deckReshuffles.total !== 1) { console.error("FAIL dayProgress deck reshuffle total"); process.exit(1); }
+if (progress.deckReshuffles.bySide[0]?.cards !== 9) { console.error("FAIL dayProgress deck reshuffle cards"); process.exit(1); }
+if (progress.operationReplans.total !== 2) { console.error("FAIL dayProgress replan total"); process.exit(1); }
+if (progress.operationReplans.byOperation[0]?.count !== 2) { console.error("FAIL dayProgress replan by operation"); process.exit(1); }
+const rewardTotals = progress.persistentRewardTotals[0]?.totals || {};
+if (rewardTotals.usIntervention !== 2 || rewardTotals.japanIntervention !== 1) {
+  console.error("FAIL dayProgress persistent reward totals");
+  process.exit(1);
+}
+console.log("✓ dayProgress 집계 정상");
 
 console.log("\n✓ day_cycle smoke test passed");

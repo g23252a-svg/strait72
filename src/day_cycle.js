@@ -155,7 +155,10 @@ export function buildDayReport(state, dayNumber, eventsData = []) {
     }
   }
 
-  // 6. 진영별 해석 문구 자동 생성
+  // 6. DAY 진행 통계: 턴 로그에서는 줄이고 DAY 요약에서 누적 표시
+  const dayProgress = collectDayProgress(state.log, turnStart, turnEnd);
+
+  // 7. 진영별 해석 문구 자동 생성
   const interpretation = generateInterpretation(gaugeDeltas, occupationChanges, events);
 
   return {
@@ -166,7 +169,75 @@ export function buildDayReport(state, dayNumber, eventsData = []) {
     occupationChanges,
     events,
     majorBattles,
+    dayProgress,
     interpretation
+  };
+}
+
+function collectDayProgress(log, turnStart, turnEnd) {
+  const deckBySide = {};
+  const replanByOperation = {};
+  const rewardMap = new Map();
+  let deckTotal = 0;
+
+  for (const entry of log || []) {
+    if (entry.turn < turnStart || entry.turn > turnEnd) continue;
+
+    if (entry.phase === 4 && Array.isArray(entry.operations)) {
+      for (const line of entry.operations) {
+        if (line.includes("덱 소진") && line.includes("셔플 복귀")) {
+          const sideMatch = line.match(/^(.+?)\s+덱 소진:/);
+          const cardMatch = line.match(/(\d+)장\s+셔플 복귀/);
+          const side = sideMatch?.[1]?.trim() || "알 수 없음";
+          const cards = cardMatch ? Number(cardMatch[1]) : 0;
+          deckBySide[side] = deckBySide[side] || { side, count: 0, cards: 0 };
+          deckBySide[side].count += 1;
+          deckBySide[side].cards += cards;
+          deckTotal += 1;
+        }
+
+        if (line.includes("보류: 유효한 지역 타깃 없음")) {
+          const match = line.match(/^(.+?)\s+보류:/);
+          const operation = match?.[1]?.trim() || "작전";
+          replanByOperation[operation] = (replanByOperation[operation] || 0) + 1;
+        }
+      }
+    }
+
+    if (entry.phase === 1 && Array.isArray(entry.perTurnApplied)) {
+      for (const applied of entry.perTurnApplied) {
+        const key = applied.rewardId || applied.rewardName || "reward";
+        if (!rewardMap.has(key)) {
+          rewardMap.set(key, {
+            rewardId: applied.rewardId || key,
+            rewardName: applied.rewardName || key,
+            turns: 0,
+            totals: {}
+          });
+        }
+        const item = rewardMap.get(key);
+        let changed = false;
+        for (const [gaugeKey, detail] of Object.entries(applied.details || {})) {
+          const delta = Number(detail?.delta || 0);
+          if (delta === 0) continue;
+          item.totals[gaugeKey] = (item.totals[gaugeKey] || 0) + delta;
+          changed = true;
+        }
+        if (changed) item.turns += 1;
+      }
+    }
+  }
+
+  return {
+    deckReshuffles: {
+      total: deckTotal,
+      bySide: Object.values(deckBySide)
+    },
+    operationReplans: {
+      total: Object.values(replanByOperation).reduce((sum, n) => sum + n, 0),
+      byOperation: Object.entries(replanByOperation).map(([name, count]) => ({ name, count }))
+    },
+    persistentRewardTotals: [...rewardMap.values()].filter(r => Object.keys(r.totals).length > 0)
   };
 }
 

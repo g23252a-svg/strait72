@@ -345,17 +345,8 @@ export function phaseInformation(state) {
     perTurnApplied
   });
 
-  // 사용자 로그에 perTurnGain 한 줄 요약
-  if (perTurnApplied.length && state.thisTurn?.operationLog) {
-    for (const a of perTurnApplied) {
-      const parts = Object.entries(a.details)
-        .filter(([k, v]) => v.delta !== 0)
-        .map(([k, v]) => `${k} ${v.delta > 0 ? "+" : ""}${v.delta}`);
-      if (parts.length) {
-        state.thisTurn.operationLog.push(`보상 효과 (${a.rewardName}): ${parts.join(", ")}`);
-      }
-    }
-  }
+  // c2-b1.2: perTurnGain 원본은 phase 1 log의 perTurnApplied에 보존하고,
+  // 사용자 턴 로그에는 매턴 반복 노출하지 않는다. DAY 요약에서 누적 표시한다.
 
   // ---- v0.3.6: 턴 시작 드로우 ----
   // 1턴은 시작 손패 4장이 이미 있으므로 skip, 2턴부터 매턴 2장 드로우 + 한도 5장 적용

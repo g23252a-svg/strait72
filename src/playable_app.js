@@ -59,7 +59,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.4.0-c2-b1.1";
+const EXPECTED_BUILD = "v0.4.0-c2-b1.2";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -982,7 +982,7 @@ function renderTurnBlock(turn, summaries, isCurrent) {
 
   // 작전 라인 분류: 핵심(성공/실패) vs 일반
   // v0.3.8d: "보류: 유효한 지역 타깃 없음" 다중 라인을 1줄 요약으로 묶음
-  const transformedOps = transformOperationsForDisplay(s.operations || []);
+  const transformedOps = transformOperationsForDisplay(s.operations || [], turn);
   const opsLines = transformedOps.map(line => {
     const klass = classifyOperationLine(line);
     return `<p class="log-op ${klass}">${escapeHtml(line)}</p>`;
@@ -1022,10 +1022,16 @@ function classifyOperationLine(line) {
  * - "X 보류: 유효한 지역 타깃 없음" 다중 라인을 → "중국군, 작전 재조정 중 (X, Y)" 1줄로 묶음.
  * - 원본 라인 자체는 state.log에 그대로 남아 있어 디버그/시뮬에는 영향 없음.
  */
-function transformOperationsForDisplay(ops) {
+function transformOperationsForDisplay(ops, turn) {
   const out = [];
   const reserved = [];
   for (const line of ops) {
+    if (line.includes("덱 소진") && line.includes("셔플 복귀")) {
+      continue;
+    }
+    if (line.includes("보상 효과 (")) {
+      continue;
+    }
     if (line.includes("보류: 유효한 지역 타깃 없음")) {
       // "<작전명> 보류: ..." → 작전명만 추출
       const match = line.match(/^(.+?)\s+보류:/);
@@ -1035,10 +1041,25 @@ function transformOperationsForDisplay(ops) {
     out.push(line);
   }
   if (reserved.length) {
-    const uniq = [...new Set(reserved)];
-    out.push(`중국군, 작전 재조정 중 (${uniq.join(", ")})`);
+    const uniq = [...new Set(reserved)]
+      .filter(name => !wasOperationReplannedEarlierThisDay(name, turn));
+    if (uniq.length) out.push(`중국군, 작전 재조정 중 (${uniq.join(", ")})`);
   }
   return out;
+}
+
+function wasOperationReplannedEarlierThisDay(operationName, turn) {
+  if (!turn || !operationName) return false;
+  const day = dayNumberForTurn(turn);
+  const turnStart = (day - 1) * TURNS_PER_DAY + 1;
+  for (const entry of state.log || []) {
+    if (entry.turn < turnStart || entry.turn >= turn) continue;
+    if (entry.phase !== 4 || !Array.isArray(entry.operations)) continue;
+    if (entry.operations.some(line => line.startsWith(`${operationName} 보류:`))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function computeGaugeDeltas(before, after) {
@@ -1108,6 +1129,54 @@ function escapeHtml(text) {
     .replaceAll(">", "&gt;");
 }
 
+function renderDayProgressLines(progress = {}) {
+  const lines = [];
+  const deck = progress.deckReshuffles || { total: 0, bySide: [] };
+  const deckDetail = (deck.bySide || [])
+    .map(s => `${s.side} ${s.count}회${s.cards ? ` (${s.cards}장)` : ""}`)
+    .join(" / ");
+  lines.push(`<li>덱 셔플 복귀: <b>${deck.total || 0}회</b>${deckDetail ? ` <span class="muted">${escapeHtml(deckDetail)}</span>` : ""}</li>`);
+
+  const replans = progress.operationReplans || { total: 0, byOperation: [] };
+  const replanDetail = (replans.byOperation || [])
+    .map(o => `${o.name} ${o.count}회`)
+    .join(" / ");
+  lines.push(`<li>작전 재조정: <b>${replans.total || 0}회</b>${replanDetail ? ` <span class="muted">${escapeHtml(replanDetail)}</span>` : ""}</li>`);
+
+  const rewards = progress.persistentRewardTotals || [];
+  if (!rewards.length) {
+    lines.push(`<li>활성 영구 보상 누적: <span class="muted">없음</span></li>`);
+  } else {
+    for (const reward of rewards) {
+      const totals = Object.entries(reward.totals || {})
+        .filter(([, delta]) => Number(delta) !== 0)
+        .map(([key, delta]) => `${gaugeLabel(key)} ${delta > 0 ? "+" : ""}${Math.round(delta)}`)
+        .join(", ");
+      if (totals) {
+        lines.push(`<li>활성 영구 보상 누적 (${escapeHtml(reward.rewardName)}): <b>${escapeHtml(totals)}</b></li>`);
+      }
+    }
+  }
+  return lines.join("");
+}
+
+function gaugeLabel(key) {
+  const labels = {
+    chinaTempo: "중국 작전 템포",
+    chinaSupply: "중국 보급",
+    chinaPoliticalPressure: "중국 정치압박",
+    taiwanGovernment: "대만 정부",
+    taiwanMorale: "대만 사기",
+    taiwanCommand: "대만 지휘",
+    taiwanSupply: "대만 보급",
+    usIntervention: "미국 개입",
+    japanIntervention: "일본 개입",
+    koreaRearSupport: "한국 후방지원",
+    internationalOpinion: "국제 여론"
+  };
+  return labels[key] || key;
+}
+
 // =====================================================================
 // v0.4.0-b: DAY 종료 모달
 // =====================================================================
@@ -1152,6 +1221,7 @@ function showDayEndModal(dayNumber) {
 
   const eventLines = report.events.map(e => `<li>📣 ${escapeHtml(e)}</li>`).join("");
   const battleLines = report.majorBattles.map(b => `<li>⚔ T${b.turn} ${escapeHtml(b.text)}</li>`).join("");
+  const dayProgressLines = renderDayProgressLines(report.dayProgress);
 
   // 진영별 해석 (양쪽 모드면 both 우선, 아니면 선택 진영)
   let interpretationText = "";
@@ -1167,6 +1237,7 @@ function showDayEndModal(dayNumber) {
       </div>
 
       ${occupationLines ? `<section><h3>점령 변화</h3><ul class="occu-list">${occupationLines}</ul></section>` : ""}
+      <section class="day-progress-section"><h3>이번 DAY 진행</h3><ul class="day-progress-list">${dayProgressLines}</ul></section>
       ${battleLines ? `<section><h3>주요 전투</h3><ul>${battleLines}</ul></section>` : ""}
       ${eventLines ? `<section><h3>국제 이벤트</h3><ul class="event-list">${eventLines}</ul></section>` : ""}
 
@@ -1218,6 +1289,13 @@ function showDayEndModal(dayNumber) {
       .day-modal .neg { color: #ff8b94; font-weight: 700; }
       .day-modal .muted { color: rgba(234, 243, 255, .45); font-size: 11px; }
       .day-modal .gauge-list li { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+      .day-modal .day-progress-section {
+        background: rgba(124, 171, 220, .08);
+        border: 1px solid rgba(124, 171, 220, .18);
+        border-radius: 8px;
+        padding: 10px 12px;
+      }
+      .day-modal .day-progress-list li { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
       .day-modal .occu-list .occu-loss { color: #ff8b94; }
       .day-modal .occu-list .occu-recover { color: #80efb1; }
       .day-modal .interp-box {
