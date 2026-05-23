@@ -33,7 +33,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.3.7";
+const EXPECTED_BUILD = "v0.3.8c";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -293,6 +293,25 @@ function autoPickCards(side, context) {
   const cards = handIds.map(id => indices.cardIndex.get(id)).filter(Boolean);
   const selector = side === "china" ? "#chinaCards input" : "#taiwanCards input";
 
+  // v0.3.8c: 대만 수도권 위기 감지 - 카드 우선순위 조정 (focus는 변경 X)
+  const stages = ["none", "sea_superiority", "landing_attempt", "beachhead", "inland_expansion"];
+  const sIdx = (p) => p ? stages.indexOf(p.landingStage || "none") : 0;
+  const capitalCrisis = side === "taiwan" && (
+    sIdx(state.provinces?.taipei) >= 1 ||
+    sIdx(state.provinces?.keelung) >= 3 ||
+    sIdx(state.provinces?.taoyuan) >= 3 ||
+    (state.persistent?.capitalPressureTurns || 0) >= 1
+  );
+  // 위기 시 카드별 가중치 (북부방어 최우선, 외교 후순위)
+  const crisisBonus = {
+    "taiwan_north_defense_buildup": 12,
+    "taiwan_mobile_reserve_deploy": 10,
+    "taiwan_backup_network": 8,
+    "taiwan_emergency_restoration": 6,
+    "taiwan_president_speech": 4,
+    "taiwan_international_appeal": 3
+  };
+
   const recent = recentUiPicks[side] || [];
   const scored = cards.map(card => {
     let score = 0;
@@ -301,6 +320,9 @@ function autoPickCards(side, context) {
     if (side === "taiwan" && Array.isArray(card.target) && card.target.includes(context)) score += 5;
     if (side === "taiwan" && ["defense_buff", "counterplay", "diplomacy", "rally"].includes(card.type)) score += 2;
     if (card.type === "bluff") score -= 1; // v0.3에서는 블러프 해석 미구현이라 우선순위 낮춤
+
+    // v0.3.8c: 수도권 위기 시 카드별 가중치 적용
+    if (capitalCrisis && crisisBonus[card.id]) score += crisisBonus[card.id];
 
     // 같은 카드 추천 반복 완화. 최근 2턴에 쓴 카드는 강하게 감점.
     const lastIdx = recent.lastIndexOf(card.id);

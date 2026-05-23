@@ -152,6 +152,30 @@ function chooseTaiwanCards(state, axisId, focus) {
   const wanted = [];
   const g = state.gauges;
 
+  // v0.3.8c: 수도권 위기 감지 - 단독 가드 (focus 변경 없음)
+  //   - 타이베이 sea_superiority 이상
+  //   - 또는 지룽/타오위안 beachhead 이상
+  //   - 또는 capitalPressureTurns >= 1 (v0.3.8b 트래커)
+  // 위기 상태이면 방어/복구 카드를 외교/사기 카드보다 먼저 사용.
+  const stages = ["none", "sea_superiority", "landing_attempt", "beachhead", "inland_expansion"];
+  const sIdx = (p) => p ? stages.indexOf(p.landingStage || "none") : 0;
+  const capitalCrisis = (
+    sIdx(state.provinces.taipei) >= 1 ||
+    sIdx(state.provinces.keelung) >= 3 ||
+    sIdx(state.provinces.taoyuan) >= 3 ||
+    (state.persistent?.capitalPressureTurns || 0) >= 1
+  );
+
+  if (capitalCrisis) {
+    // 위기 시 우선순위: 방어 → 복구 → 사기 → 외교
+    if (has("taiwan_north_defense_buildup")) wanted.push("taiwan_north_defense_buildup");
+    if (has("taiwan_mobile_reserve_deploy")) wanted.push("taiwan_mobile_reserve_deploy");
+    if (has("taiwan_backup_network")) wanted.push("taiwan_backup_network");
+    if (has("taiwan_emergency_restoration")) wanted.push("taiwan_emergency_restoration");
+    if (has("taiwan_president_speech")) wanted.push("taiwan_president_speech");
+    if (has("taiwan_international_appeal")) wanted.push("taiwan_international_appeal");
+  }
+
   // 생존 복구 우선.
   if ((g.taiwanCommand <= 75 || g.taiwanGovernment <= 80) && has("taiwan_emergency_restoration")) {
     wanted.push("taiwan_emergency_restoration");

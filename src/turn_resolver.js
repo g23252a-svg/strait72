@@ -611,6 +611,36 @@ export function phaseInternationalIntervention(state, events, timing) {
 }
 
 export function phaseTurnEnd(state) {
+  // v0.3.8b: 수도권 압박 지속 추적 (즉시 승리 → 2턴 유지 + 인접 점령 AND 조건)
+  // 타이베이가 "교두보 단계 이상"이면 카운터 증가, 아니면 리셋.
+  // beachhead landingStage도 포함 (controlStage가 아직 beachhead_established가 아니어도 진척 중).
+  const taipei = state.provinces.taipei;
+  const taipeiPressured = !!taipei && (
+    taipei.landingStage === "beachhead" ||
+    taipei.landingStage === "inland_expansion" ||
+    taipei.controlStage === "beachhead_established" ||
+    taipei.controlStage === "china_control"
+  );
+  if (taipeiPressured) {
+    state.persistent.capitalPressureTurns = (state.persistent.capitalPressureTurns || 0) + 1;
+    if (state.persistent.capitalPressureTurns === 1) {
+      state.thisTurn?.operationLog?.push("수도권 압박 1턴째: 타이베이 교두보 형성");
+    } else if (state.persistent.capitalPressureTurns === 2) {
+      const keelungCtrl = state.provinces.keelung?.controlStage === "china_control";
+      const taoyuanCtrl = state.provinces.taoyuan?.controlStage === "china_control";
+      if (keelungCtrl || taoyuanCtrl) {
+        state.thisTurn?.operationLog?.push("수도권 압박 2턴째: 북부 접근로 확보");
+      } else {
+        state.thisTurn?.operationLog?.push("수도권 압박 2턴째 유지 — 단, 북부 접근로 미확보로 결정타 X");
+      }
+    }
+  } else {
+    if ((state.persistent.capitalPressureTurns || 0) > 0) {
+      state.thisTurn?.operationLog?.push("수도권 압박 완화: 타이베이 진척 해제");
+    }
+    state.persistent.capitalPressureTurns = 0;
+  }
+
   // 1. 승리 조건 체크
   state.outcome = checkVictoryConditions(state);
 
@@ -794,7 +824,18 @@ export function checkVictoryConditions(state) {
   if (state.gauges.taiwanGovernment <= 0) return "china_surrender_win";
   if (state.gauges.taiwanSupply <= 0 && state.gauges.taiwanMorale <= 40) return "china_blockade_win";
   if (state.provinces.taipei?.controlStage === "china_control") return "china_capital_win";
-  if (["beachhead_established", "china_control"].includes(state.provinces.taipei?.controlStage) && state.gauges.taiwanGovernment <= 90) {
+
+  // v0.3.8b: 수도권 압박 승리 조건 강화 (즉시 승리 → 2턴 유지 AND 북부 접근로 점령)
+  // 기존 (v0.3.7까지): 타이베이 beachhead_established + 정부 90 이하 → 즉시 승리
+  // 변경 (v0.3.8b):  타이베이 압박 2턴 지속 AND (지룽 또는 타오위안) china_control 점령 필요
+  //   - taiwanGovernment 조건은 제거 (지속/접근로가 더 직관적 조건)
+  //   - capitalPressureTurns는 phaseTurnEnd에서 추적 (이미 갱신됨)
+  const taipeiHeldByChina = ["beachhead_established", "china_control"].includes(state.provinces.taipei?.controlStage);
+  const sustained = (state.persistent?.capitalPressureTurns || 0) >= 2;
+  const northernAccess =
+    state.provinces.keelung?.controlStage === "china_control" ||
+    state.provinces.taoyuan?.controlStage === "china_control";
+  if (taipeiHeldByChina && sustained && northernAccess) {
     return "china_capital_pressure_win";
   }
 
