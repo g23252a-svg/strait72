@@ -45,10 +45,10 @@ for (const r of [...tw_c1, ...cn_c1]) {
 }
 console.log("  c1 풀 전부 instant ✓");
 
-// v0.4.0-c2-a: c2-a 풀 = c1 6개 + add_card 2개씩 = 8개 (c2-b1/b2 미포함)
-const tw_c2a = rewardPoolForSide(rewards, "taiwan", { includeC2b1: false, includeC2b2: false });
-const cn_c2a = rewardPoolForSide(rewards, "china", { includeC2b1: false, includeC2b2: false });
-console.log(`c2-a 풀 (c2-b1/b2 미포함): 대만 ${tw_c2a.length}개, 중국 ${cn_c2a.length}개`);
+// v0.4.0-c2-a: c2-a 풀 = c1 6개 + add_card 2개씩 = 8개 (c2-b1/b2/b3 미포함)
+const tw_c2a = rewardPoolForSide(rewards, "taiwan", { includeC2b1: false, includeC2b2: false, includeC2b3: false });
+const cn_c2a = rewardPoolForSide(rewards, "china", { includeC2b1: false, includeC2b2: false, includeC2b3: false });
+console.log(`c2-a 풀 (c2-b1/b2/b3 미포함): 대만 ${tw_c2a.length}개, 중국 ${cn_c2a.length}개`);
 if (tw_c2a.length !== 8 || cn_c2a.length !== 8) {
   console.error("FAIL: c2-a 풀이 8개씩 아님"); process.exit(1);
 }
@@ -58,10 +58,10 @@ if (addCardCount !== 4) {
 }
 console.log("  c2-a 풀에 add_card 4개 포함 ✓");
 
-// v0.4.0-c2-b1: c2-b1 풀 = c1 6 + c2a 2 + perTurnGain 1씩 = 9개 (c2-b2 미포함)
-const tw_c2b1 = rewardPoolForSide(rewards, "taiwan", { includeC2b2: false });
-const cn_c2b1 = rewardPoolForSide(rewards, "china", { includeC2b2: false });
-console.log(`c2-b1 풀 (c2-b2 미포함): 대만 ${tw_c2b1.length}개, 중국 ${cn_c2b1.length}개`);
+// v0.4.0-c2-b1: c2-b1 풀 = c1 6 + c2a 2 + perTurnGain 1씩 = 9개 (c2-b2/b3 미포함)
+const tw_c2b1 = rewardPoolForSide(rewards, "taiwan", { includeC2b2: false, includeC2b3: false });
+const cn_c2b1 = rewardPoolForSide(rewards, "china", { includeC2b2: false, includeC2b3: false });
+console.log(`c2-b1 풀 (c2-b2/b3 미포함): 대만 ${tw_c2b1.length}개, 중국 ${cn_c2b1.length}개`);
 if (tw_c2b1.length !== 9 || cn_c2b1.length !== 9) {
   console.error(`FAIL: c2-b1 풀 9개씩 아님 (대만 ${tw_c2b1.length}, 중국 ${cn_c2b1.length})`); process.exit(1);
 }
@@ -225,10 +225,10 @@ console.log(`  ✓ usIntervention 99 + 2 → 100 (clamp)`);
 console.log(`\n[c2-b2 defenseValueBonus 검증]`);
 import { computePersistentDefenseBonus } from "./reward_system.js";
 
-// 풀 확장 확인 (대만 c2-b2 = c1 6 + c2a 2 + c2b1 1 + c2b2 2 = 11)
-const tw_c2b2 = rewardPoolForSide(rewards, "taiwan");
-const cn_c2b2 = rewardPoolForSide(rewards, "china");
-console.log(`c2-b2 풀: 대만 ${tw_c2b2.length}개, 중국 ${cn_c2b2.length}개`);
+// 풀 확장 확인 (대만 c2-b2 only = c1 6 + c2a 2 + c2b1 1 + c2b2 2 = 11, b3 제외)
+const tw_c2b2 = rewardPoolForSide(rewards, "taiwan", { includeC2b3: false });
+const cn_c2b2 = rewardPoolForSide(rewards, "china", { includeC2b3: false });
+console.log(`c2-b2 only 풀: 대만 ${tw_c2b2.length}개, 중국 ${cn_c2b2.length}개`);
 if (tw_c2b2.length !== 11) {
   console.error(`FAIL: 대만 c2-b2 풀 11개 아님, got ${tw_c2b2.length}`); process.exit(1);
 }
@@ -236,6 +236,33 @@ if (cn_c2b2.length !== 9) {
   console.error(`FAIL: 중국 c2-b2 풀 9개 아님 (중국은 b2 활성화 X), got ${cn_c2b2.length}`); process.exit(1);
 }
 console.log(`  ✓ 대만 11개 (defenseValueBonus 2개 추가), 중국 9개 (b2 미활성)`);
+
+// v0.4.0-c2-b3-1: 중국 풀에 rangedAttackBonus 1개 추가 → 10개
+const tw_c2b3 = rewardPoolForSide(rewards, "taiwan");
+const cn_c2b3 = rewardPoolForSide(rewards, "china");
+console.log(`c2-b3-1 풀: 대만 ${tw_c2b3.length}개, 중국 ${cn_c2b3.length}개`);
+if (tw_c2b3.length !== 11) {
+  console.error(`FAIL: 대만 c2-b3-1 풀 11개 아님 (대만 b3 없음), got ${tw_c2b3.length}`); process.exit(1);
+}
+if (cn_c2b3.length !== 10) {
+  console.error(`FAIL: 중국 c2-b3-1 풀 10개 아님 (missile 1개 추가), got ${cn_c2b3.length}`); process.exit(1);
+}
+// b3 활성화된 1개만 — missile_range_extend
+const missile = cn_c2b3.find(r => r.id === "cn_missile_range_extend");
+if (!missile) {
+  console.error(`FAIL: cn_missile_range_extend가 c2-b3-1 풀에 없음`); process.exit(1);
+}
+console.log(`  ✓ 중국 10개 (rangedAttackBonus 1개 추가: ${missile.name})`);
+
+// 다른 b3 후보들은 아직 풀에 들어오지 않아야 (좁게 활성화 검증)
+const otherB3 = ["cn_night_op_efficiency", "tw_supply_rerouting", "cn_information_control"];
+for (const id of otherB3) {
+  const inPool = [...tw_c2b3, ...cn_c2b3].find(r => r.id === id);
+  if (inPool) {
+    console.error(`FAIL: ${id}는 c2-b3-1에서 활성화되면 안 됨`); process.exit(1);
+  }
+}
+console.log(`  ✓ 다른 b3 보상 3개 (야간/감쇄/정보)는 아직 비활성`);
 
 // v0.4.0-c2-b2.1: 항만 방어 공사는 지룽/가오슝 (타이난 X)
 const defTestState = { gauges: {}, persistent: { rewards: [], provinces: {} }, log: [], turn: 1 };

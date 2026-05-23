@@ -16,7 +16,7 @@ import { addGauge } from "./state.js";
 // c2-b2/b3 예정: 나머지 persistent
 // v0.4.0-c2-b1.1: 이미 받은 persistent 보상은 풀에서 제외 (instant/add_card는 중복 가능)
 export function rewardPoolForSide(rewardsAll, side, opts = {}, state = null) {
-  const { onlyC1 = false, includeC2a = true, includeC2b1 = true, includeC2b2 = true, includeC2b3 = false } = opts;
+  const { onlyC1 = false, includeC2a = true, includeC2b1 = true, includeC2b2 = true, includeC2b3 = true } = opts;
   const alreadyOwnedPersistent = new Set();
   if (state?.persistent?.rewards?.length) {
     for (const r of state.persistent.rewards) {
@@ -175,6 +175,10 @@ export function describeRewardApplication(reward, result, state = null) {
         ? def.regions.map(id => provinceNameFromState(state, id)).join(", ")
         : "지정 지역";
       parts.push(`(영구: ${regionNames} 방어력 +${amount})`);
+    } else if (typeof reward.effects?.rangedAttackBonus === "number") {
+      // v0.4.0-c2-b3-1: rangedAttackBonus
+      const amount = Math.min(1, Math.max(0, reward.effects.rangedAttackBonus));
+      parts.push(`(영구: 원거리 작전 공격력 +${amount})`);
     } else {
       parts.push("(영구 효과 등록 — c2-b3에서 활성)");
     }
@@ -250,7 +254,45 @@ export function computePersistentDefenseBonus(state, provinceId) {
 }
 
 // =====================================================================
-// v0.4.0-c2-z-lite: 시뮬용 보상 효용 점수
+// v0.4.0-c2-b3-1: persistent rangedAttackBonus 보상의 효과 계산
+// ---------------------------------------------------------------------
+// 제한:
+//   - amount는 1로 캡 (안전망)
+//   - 적용 조건은 combat_resolver에서 source.type === "ranged"일 때만 호출
+//   - 모든 영구 ranged 보상의 amount 합산 (현재는 cn_missile_range_extend 1개)
+// =====================================================================
+export function computePersistentRangedAttackBonus(state) {
+  const rewards = state.persistent?.rewards || [];
+  if (!rewards.length) return 0;
+
+  let total = 0;
+  for (const r of rewards) {
+    if (r.applyTiming !== "persistent") continue;
+    const amount = r.effects?.rangedAttackBonus;
+    if (typeof amount !== "number") continue;
+    total += Math.min(1, Math.max(0, amount));
+  }
+  return total;
+}
+
+// v0.4.0-c2-b3-1: 전투 로그 breakdown용 ranged 기여자 수집
+export function collectPersistentRangedAttackContributors(state) {
+  const rewards = state.persistent?.rewards || [];
+  if (!rewards.length) return null;
+
+  const contributors = [];
+  let total = 0;
+  for (const r of rewards) {
+    if (r.applyTiming !== "persistent") continue;
+    const amount = r.effects?.rangedAttackBonus;
+    if (typeof amount !== "number" || amount <= 0) continue;
+    const capped = Math.min(1, amount);
+    contributors.push({ rewardName: r.name, amount: capped });
+    total += capped;
+  }
+  if (contributors.length === 0) return null;
+  return { total, contributors };
+}
 // ---------------------------------------------------------------------
 // 정책 (사용자 명세 그대로):
 //   - base 10
@@ -283,6 +325,11 @@ export function scoreRewardUtility(reward, state, dayReport, side, dayNumber, op
       score += scorePerTurnGain(reward, state, turnsLeft);
     } else if (reward.effects?.defenseValueBonus) {
       score += scoreDefenseValueBonus(reward, state, dayReport);
+    } else if (typeof reward.effects?.rangedAttackBonus === "number") {
+      // v0.4.0-c2-b3-1: rangedAttackBonus — 남은 턴 수 × amount × 1.2
+      // 매 ranged 작전마다 효과 발생. perTurnGain보다 보수적 계수(1.2)로 시작.
+      const amount = Math.min(1, Math.max(0, reward.effects.rangedAttackBonus));
+      score += turnsLeft * amount * 1.2;
     }
   }
 

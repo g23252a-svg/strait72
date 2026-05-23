@@ -9,7 +9,11 @@
 // =====================================================================
 
 import { landingStageToControlStage, LANDING_STAGES } from "./landing_fsm.js";
-import { computePersistentDefenseBonus } from "./reward_system.js";
+import {
+  computePersistentDefenseBonus,
+  computePersistentRangedAttackBonus,
+  collectPersistentRangedAttackContributors
+} from "./reward_system.js";
 
 export const SUCCESS_DEPENDENT_EFFECT_KEYS = Object.freeze([
   "landingProgressBonus",
@@ -136,6 +140,11 @@ export function resolveCombatOperation(state, {
     ? collectPersistentDefenseContributors(state, target.id)
     : null;
 
+  // v0.4.0-c2-b3-1: 공격 보상 기여 (source.type === "ranged" 한정)
+  const attackRewardBonus = (source?.type === "ranged")
+    ? collectPersistentRangedAttackContributors(state)
+    : null;
+
   const margin = attackPower - defensePower;
   const success = margin >= 0;
 
@@ -149,6 +158,7 @@ export function resolveCombatOperation(state, {
     attackPower,
     defensePower,
     defenseRewardBonus, // null 또는 { total, contributors: [{rewardName, amount}, ...] }
+    attackRewardBonus,  // v0.4.0-c2-b3-1: null 또는 { total, contributors: [...] }
     margin,
     success,
     grade: gradeMargin(margin)
@@ -192,6 +202,12 @@ export function calculateAttackPower(state, { source, axis, target, roll }) {
   if (source?.type === "ranged") power += 0;
   if (axis && source?.preferredAxis && source.preferredAxis === axis.id) power += 2;
   if (!source?.type && axis?.id) power += 1; // 주공축 자체 판정
+
+  // v0.4.0-c2-b3-1: persistent rangedAttackBonus — source.type === "ranged"에만 적용
+  // 좁게 시작 (미사일 압박 카드만 영향). 야간/주공축은 별도 보상 단계.
+  if (source?.type === "ranged") {
+    power += computePersistentRangedAttackBonus(state);
+  }
 
   // 자원 상태 보정
   const tempo = state.gauges.chinaTempo ?? 50;
@@ -314,11 +330,17 @@ function gradeMargin(margin) {
 export function formatCombatLog(result) {
   const mark = result.success ? "성공" : "실패";
   const sign = result.margin >= 0 ? "+" : "";
+  // v0.4.0-c2-b3-1: 영구 공격 보상 기여 (source.type === "ranged")
+  let attackStr = `공격 ${result.attackPower}`;
+  if (result.attackRewardBonus && result.attackRewardBonus.total > 0) {
+    const names = result.attackRewardBonus.contributors.map(c => c.rewardName).join(", ");
+    attackStr += ` (영구 공격 +${result.attackRewardBonus.total}: ${names})`;
+  }
   let defenseStr = `방어 ${result.defensePower}`;
   // v0.4.0-c2-b2.1: 영구 방어 보상 기여 분리 표시
   if (result.defenseRewardBonus && result.defenseRewardBonus.total > 0) {
     const names = result.defenseRewardBonus.contributors.map(c => c.rewardName).join(", ");
     defenseStr += ` (영구 방어 +${result.defenseRewardBonus.total}: ${names})`;
   }
-  return `${result.sourceName} ${mark}: ${result.targetName} | 공격 ${result.attackPower} vs ${defenseStr} | 차이 ${sign}${result.margin} | 주사위 ${result.roll}`;
+  return `${result.sourceName} ${mark}: ${result.targetName} | ${attackStr} vs ${defenseStr} | 차이 ${sign}${result.margin} | 주사위 ${result.roll}`;
 }

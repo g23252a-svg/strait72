@@ -196,4 +196,78 @@ if (log2.includes("영구 방어")) {
 }
 console.log(`  ✓ 타이베이 (영향 없음): breakdown 미표시`);
 
+// =====================================================================
+// v0.4.0-c2-b3-1: rangedAttackBonus는 source.type === "ranged"에만 적용
+// =====================================================================
+console.log("\n[c2-b3-1 rangedAttackBonus 적용 범위 검증]");
+const rangedState = createInitialState({ provinces, gameRules: GAME_RULES, axes, cardsChina, cardsTaiwan, events });
+rangedState.persistent.rewards = [{
+  id: "cn_missile_range_extend",
+  name: "미사일 사거리 연장",
+  applyTiming: "persistent",
+  effects: { rangedAttackBonus: 1 }
+}];
+
+let _seedR = 200;
+const rangedRng = () => { _seedR = (_seedR * 1664525 + 1013904223) >>> 0; return (_seedR >>> 0) / 0x100000000; };
+
+// (1) ranged 카드 — 보너스 +1 적용
+const rangedResult = resolveCombatOperation(rangedState, {
+  source: { id: "china_missile_pressure", name: "미사일 압박", type: "ranged" },
+  targetId: null,
+  randomFn: rangedRng
+});
+if (!rangedResult.attackRewardBonus || rangedResult.attackRewardBonus.total !== 1) {
+  console.error(`FAIL: ranged source attackRewardBonus 미적용. got ${JSON.stringify(rangedResult.attackRewardBonus)}`);
+  process.exit(1);
+}
+const rangedLog = formatCombatLog(rangedResult);
+if (!rangedLog.includes("영구 공격 +1: 미사일 사거리 연장")) {
+  console.error(`FAIL: ranged formatCombatLog에 breakdown 없음: ${rangedLog}`); process.exit(1);
+}
+console.log(`  ✓ ranged 카드 +1 적용 + 로그: ${rangedLog}`);
+
+// (2) attack 카드 — 보너스 미적용
+const attackResult = resolveCombatOperation(rangedState, {
+  source: { id: "south_landing_prep", name: "남부 상륙 준비", type: "attack", preferredAxis: "south_landing" },
+  axis: { id: "south_landing", name: "남부 상륙" },
+  targetId: "kaohsiung",
+  randomFn: rangedRng
+});
+if (attackResult.attackRewardBonus !== null) {
+  console.error(`FAIL: attack source인데 attackRewardBonus 적용됨. got ${JSON.stringify(attackResult.attackRewardBonus)}`);
+  process.exit(1);
+}
+const attackLog = formatCombatLog(attackResult);
+if (attackLog.includes("영구 공격")) {
+  console.error(`FAIL: attack source 로그에 공격 보상 노출됨: ${attackLog}`); process.exit(1);
+}
+console.log(`  ✓ attack 카드는 미적용 (breakdown 미표시)`);
+
+// (3) 주공축 자체 판정 (source.type 없음) — 보너스 미적용
+const axisResult = resolveCombatOperation(rangedState, {
+  source: null,
+  axis: { id: "naval_blockade", name: "해상 봉쇄" },
+  targetId: null,
+  randomFn: rangedRng
+});
+if (axisResult.attackRewardBonus !== null) {
+  console.error(`FAIL: 주공축 자체 판정에 attackRewardBonus 적용됨`); process.exit(1);
+}
+console.log(`  ✓ 주공축 자체 판정은 미적용`);
+
+// (4) 보상 없는 상태에서 ranged 카드 — null (정상 fallback)
+const noRewardState = createInitialState({ provinces, gameRules: GAME_RULES, axes, cardsChina, cardsTaiwan, events });
+const noRewardRanged = resolveCombatOperation(noRewardState, {
+  source: { id: "china_missile_pressure", name: "미사일 압박", type: "ranged" },
+  targetId: null,
+  randomFn: rangedRng
+});
+if (noRewardRanged.attackRewardBonus !== null) {
+  console.error(`FAIL: 보상 없는데 attackRewardBonus null 아님`); process.exit(1);
+}
+console.log(`  ✓ 보상 없는 상태에서 ranged 카드: breakdown null`);
+
+console.log("✓ c2-b3-1 rangedAttackBonus 검증 통과");
+
 console.log("✓ c2-b2.1 combat breakdown 검증 통과");

@@ -59,7 +59,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.4.0-c2-z-lite.1";
+const EXPECTED_BUILD = "v0.4.0-c2-b3-1";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -1520,6 +1520,10 @@ function renderRewardCard(reward) {
       for (const p of (data?.provinces || [])) provById[p.id] = p.name;
       const regionNames = regions.map(id => provById[id] || id).join(", ");
       effectText = `🛡 ${regionNames} 방어력 +${amount} (영구, 같은 지역 누적 +2 캡)`;
+    } else if (typeof eff.rangedAttackBonus === "number") {
+      // v0.4.0-c2-b3-1: 원거리 공격 보상
+      const amount = Math.min(1, Math.max(0, eff.rangedAttackBonus));
+      effectText = `🎯 원거리 작전 (미사일 압박) 공격력 +${amount} (영구)`;
     } else {
       // c2-b3 예정 효과 (rangedAttackBonus, nightOpDefenseDebuff, supplyDamageReduction 등)
       effectText = "영구 효과 — 캠페인 동안 유지 (c2-b3에서 활성)";

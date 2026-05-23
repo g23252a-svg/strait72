@@ -1,5 +1,5 @@
 {
-  "version": "0.4.0-c2-b2.1",
+  "version": "0.4.0-c2-b3-1",
   "rewards": [
     {
       "id": "tw_reserve_remobilize",
@@ -420,7 +420,15 @@
       "enabledInC1": false,
       "effects": {
         "rangedAttackBonus": 1
-      }
+      },
+      "enabledInC2b3": true,
+      "weightConditions": [
+        {
+          "if": "chinaTempoBelow",
+          "value": 60,
+          "weight": 3
+        }
+      ]
     },
     {
       "id": "cn_night_op_efficiency",
