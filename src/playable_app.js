@@ -59,7 +59,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.4.0-c2-b1.2";
+const EXPECTED_BUILD = "v0.4.0-c2-b2";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -1507,7 +1507,23 @@ function renderRewardCard(reward) {
     effectText = `🎴 다음 드로우 시 「${cardName}」 1장 손패에 들어옴 (덱 맨 위 삽입)`;
     badgeHtml = `<div class="reward-badge reward-badge-card">CARD</div>`;
   } else if (reward.applyTiming === "persistent") {
-    effectText = "영구 효과 — 캠페인 동안 유지 (c2-b에서 활성)";
+    // v0.4.0-c2-b2: persistent 보상별 자연어 표시
+    const eff = reward.effects || {};
+    if (eff.perTurnGain) {
+      const parts = Object.entries(eff.perTurnGain)
+        .map(([k, v]) => `${formatRewardEffectKey(k)} ${v > 0 ? "+" : ""}${v}/턴`);
+      effectText = `🔁 매 턴: ${parts.join(", ")}`;
+    } else if (eff.defenseValueBonus) {
+      const regions = eff.defenseValueBonus.regions || [];
+      const amount = Math.min(1, eff.defenseValueBonus.amount || 0);
+      const provById = {};
+      for (const p of (data?.provinces || [])) provById[p.id] = p.name;
+      const regionNames = regions.map(id => provById[id] || id).join(", ");
+      effectText = `🛡 ${regionNames} 방어력 +${amount} (영구, 같은 지역 누적 +2 캡)`;
+    } else {
+      // c2-b3 예정 효과 (rangedAttackBonus, nightOpDefenseDebuff, supplyDamageReduction 등)
+      effectText = "영구 효과 — 캠페인 동안 유지 (c2-b3에서 활성)";
+    }
     badgeHtml = `<div class="reward-badge reward-badge-persistent">PERSIST</div>`;
   } else {
     // instant

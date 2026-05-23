@@ -9,6 +9,7 @@
 // =====================================================================
 
 import { landingStageToControlStage, LANDING_STAGES } from "./landing_fsm.js";
+import { computePersistentDefenseBonus } from "./reward_system.js";
 
 export const SUCCESS_DEPENDENT_EFFECT_KEYS = Object.freeze([
   "landingProgressBonus",
@@ -224,6 +225,9 @@ export function effectiveProvinceDefense(state, province, source = null) {
   for (const buff of province.buffs || []) {
     if (buff.effects?.defenseValueBonus) defense += buff.effects.defenseValueBonus;
   }
+
+  // v0.4.0-c2-b2: persistent reward의 지역 방어 보너스 (최대 +2 캡)
+  defense += computePersistentDefenseBonus(state, province.id);
 
   defense += moraleBandBonus(state.gauges.taiwanMorale);
   defense += commandBandBonus(state.gauges.taiwanCommand);

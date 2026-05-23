@@ -1,5 +1,5 @@
 {
-  "version": "0.4.0-c2-b1",
+  "version": "0.4.0-c2-b2",
   "rewards": [
     {
       "id": "tw_reserve_remobilize",
@@ -163,7 +163,8 @@
           "value": "tainan",
           "weight": 8
         }
-      ]
+      ],
+      "enabledInC2b2": true
     },
     {
       "id": "tw_north_defense_dig_in",
@@ -188,7 +189,8 @@
           "if": "capitalUnderPressure",
           "weight": 9
         }
-      ]
+      ],
+      "enabledInC2b2": true
     },
     {
       "id": "tw_supply_rerouting",

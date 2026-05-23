@@ -45,10 +45,10 @@ for (const r of [...tw_c1, ...cn_c1]) {
 }
 console.log("  c1 풀 전부 instant ✓");
 
-// v0.4.0-c2-a: c2-a 풀 = c1 6개 + add_card 2개씩 = 8개
-const tw_c2a = rewardPoolForSide(rewards, "taiwan", { includeC2b1: false });
-const cn_c2a = rewardPoolForSide(rewards, "china", { includeC2b1: false });
-console.log(`c2-a 풀 (c2-b1 미포함): 대만 ${tw_c2a.length}개, 중국 ${cn_c2a.length}개`);
+// v0.4.0-c2-a: c2-a 풀 = c1 6개 + add_card 2개씩 = 8개 (c2-b1/b2 미포함)
+const tw_c2a = rewardPoolForSide(rewards, "taiwan", { includeC2b1: false, includeC2b2: false });
+const cn_c2a = rewardPoolForSide(rewards, "china", { includeC2b1: false, includeC2b2: false });
+console.log(`c2-a 풀 (c2-b1/b2 미포함): 대만 ${tw_c2a.length}개, 중국 ${cn_c2a.length}개`);
 if (tw_c2a.length !== 8 || cn_c2a.length !== 8) {
   console.error("FAIL: c2-a 풀이 8개씩 아님"); process.exit(1);
 }
@@ -58,10 +58,10 @@ if (addCardCount !== 4) {
 }
 console.log("  c2-a 풀에 add_card 4개 포함 ✓");
 
-// v0.4.0-c2-b1: c2-b1 풀 = c1 6 + c2a 2 + perTurnGain 1씩 = 9개
-const tw_c2b1 = rewardPoolForSide(rewards, "taiwan");
-const cn_c2b1 = rewardPoolForSide(rewards, "china");
-console.log(`c2-b1 풀: 대만 ${tw_c2b1.length}개, 중국 ${cn_c2b1.length}개`);
+// v0.4.0-c2-b1: c2-b1 풀 = c1 6 + c2a 2 + perTurnGain 1씩 = 9개 (c2-b2 미포함)
+const tw_c2b1 = rewardPoolForSide(rewards, "taiwan", { includeC2b2: false });
+const cn_c2b1 = rewardPoolForSide(rewards, "china", { includeC2b2: false });
+console.log(`c2-b1 풀 (c2-b2 미포함): 대만 ${tw_c2b1.length}개, 중국 ${cn_c2b1.length}개`);
 if (tw_c2b1.length !== 9 || cn_c2b1.length !== 9) {
   console.error(`FAIL: c2-b1 풀 9개씩 아님 (대만 ${tw_c2b1.length}, 중국 ${cn_c2b1.length})`); process.exit(1);
 }
@@ -220,6 +220,64 @@ if (pturnState.gauges.usIntervention !== 100) {
   console.error(`FAIL: clamp 안 됨, us=${pturnState.gauges.usIntervention}`); process.exit(1);
 }
 console.log(`  ✓ usIntervention 99 + 2 → 100 (clamp)`);
+
+// 11. v0.4.0-c2-b2: defenseValueBonus 계산 + 캡 검증
+console.log(`\n[c2-b2 defenseValueBonus 검증]`);
+import { computePersistentDefenseBonus } from "./reward_system.js";
+
+// 풀 확장 확인 (대만 c2-b2 = c1 6 + c2a 2 + c2b1 1 + c2b2 2 = 11)
+const tw_c2b2 = rewardPoolForSide(rewards, "taiwan");
+const cn_c2b2 = rewardPoolForSide(rewards, "china");
+console.log(`c2-b2 풀: 대만 ${tw_c2b2.length}개, 중국 ${cn_c2b2.length}개`);
+if (tw_c2b2.length !== 11) {
+  console.error(`FAIL: 대만 c2-b2 풀 11개 아님, got ${tw_c2b2.length}`); process.exit(1);
+}
+if (cn_c2b2.length !== 9) {
+  console.error(`FAIL: 중국 c2-b2 풀 9개 아님 (중국은 b2 활성화 X), got ${cn_c2b2.length}`); process.exit(1);
+}
+console.log(`  ✓ 대만 11개 (defenseValueBonus 2개 추가), 중국 9개 (b2 미활성)`);
+
+// 항만 방어 공사: 가오슝/타이난 +1
+const defTestState = { gauges: {}, persistent: { rewards: [] }, log: [], turn: 1 };
+const port = rewards.find(r => r.id === "tw_port_fortification");
+const portApply = applyReward(defTestState, port);
+const portDescribe = describeRewardApplication(port, portApply);
+if (!portDescribe.includes("보상 활성화") || !portDescribe.includes("방어력 +1")) {
+  console.error(`FAIL: defenseValueBonus 활성화 로그 부정확: ${portDescribe}`); process.exit(1);
+}
+const kaohsiungBonus = computePersistentDefenseBonus(defTestState, "kaohsiung");
+const taipeiBonus = computePersistentDefenseBonus(defTestState, "taipei");
+if (kaohsiungBonus !== 1) { console.error(`FAIL: 가오슝 bonus ${kaohsiungBonus}, expected 1`); process.exit(1); }
+if (taipeiBonus !== 0) { console.error(`FAIL: 타이베이 bonus ${taipeiBonus}, expected 0 (지역 제한)`); process.exit(1); }
+console.log(`  ✓ 항만 방어: 가오슝 +1, 타이베이 +0 (지역 제한 ✓)`);
+
+// 북부 진지 강화 추가: 타이베이 +1
+const north = rewards.find(r => r.id === "tw_north_defense_dig_in");
+applyReward(defTestState, north);
+const taipeiAfter = computePersistentDefenseBonus(defTestState, "taipei");
+const kaohsiungAfter = computePersistentDefenseBonus(defTestState, "kaohsiung");
+if (taipeiAfter !== 1) { console.error(`FAIL: 타이베이 +1 (북부 진지) 아님, got ${taipeiAfter}`); process.exit(1); }
+if (kaohsiungAfter !== 1) { console.error(`FAIL: 가오슝 변동되면 안 됨, got ${kaohsiungAfter}`); process.exit(1); }
+console.log(`  ✓ 북부 진지: 타이베이 +1, 가오슝 변동 없음`);
+
+// +2 캡 검증 — amount: 5인 가짜 보상으로도 1로 캡되는지
+const capTestState = {
+  gauges: {}, persistent: { rewards: [
+    { id: "fake_huge", applyTiming: "persistent", effects: { defenseValueBonus: { regions: ["taipei"], amount: 5 } } },
+    { id: "fake_huge2", applyTiming: "persistent", effects: { defenseValueBonus: { regions: ["taipei"], amount: 5 } } },
+    { id: "fake_huge3", applyTiming: "persistent", effects: { defenseValueBonus: { regions: ["taipei"], amount: 5 } } }
+  ] }, log: [], turn: 1
+};
+const capBonus = computePersistentDefenseBonus(capTestState, "taipei");
+if (capBonus !== 2) {
+  console.error(`FAIL: +2 캡 안 걸림, got ${capBonus}`); process.exit(1);
+}
+console.log(`  ✓ amount=5 보상 3개 동일 지역에 있어도 캡 +2 (실제 ${capBonus})`);
+
+// 빈 state는 0
+const emptyBonus = computePersistentDefenseBonus({ persistent: {} }, "taipei");
+if (emptyBonus !== 0) { console.error(`FAIL: empty bonus ${emptyBonus}`); process.exit(1); }
+console.log(`  ✓ persistent 보상 없을 때 0`);
 
 // 11. v0.4.0-c2-b1.1: persistent 중복 방지
 console.log(`\n[c2-b1.1 persistent 중복 방지]`);

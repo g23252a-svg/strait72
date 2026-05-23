@@ -16,7 +16,7 @@ import { addGauge } from "./state.js";
 // c2-b2/b3 예정: 나머지 persistent
 // v0.4.0-c2-b1.1: 이미 받은 persistent 보상은 풀에서 제외 (instant/add_card는 중복 가능)
 export function rewardPoolForSide(rewardsAll, side, opts = {}, state = null) {
-  const { onlyC1 = false, includeC2a = true, includeC2b1 = true, includeC2b2 = false, includeC2b3 = false } = opts;
+  const { onlyC1 = false, includeC2a = true, includeC2b1 = true, includeC2b2 = true, includeC2b3 = false } = opts;
   const alreadyOwnedPersistent = new Set();
   if (state?.persistent?.rewards?.length) {
     for (const r of state.persistent.rewards) {
@@ -166,6 +166,11 @@ export function describeRewardApplication(reward, result) {
       const lines = Object.entries(reward.effects.perTurnGain)
         .map(([k, v]) => `${k} ${v > 0 ? "+" : ""}${v}/턴`);
       parts.push(`(영구: ${lines.join(", ")})`);
+    } else if (reward.effects?.defenseValueBonus) {
+      const def = reward.effects.defenseValueBonus;
+      const amount = Math.min(1, Math.max(0, def.amount || 0));
+      const regions = Array.isArray(def.regions) ? def.regions.join(", ") : "지정 지역";
+      parts.push(`(영구: ${regions} 방어력 +${amount})`);
     } else {
       parts.push("(영구 효과 등록 — c2-b2/b3에서 활성)");
     }
@@ -202,4 +207,33 @@ export function applyPerTurnPersistentEffects(state) {
     applied.push({ rewardId: reward.id, rewardName: reward.name, details });
   }
   return applied;
+}
+
+// =====================================================================
+// v0.4.0-c2-b2: persistent defenseValueBonus 보상의 효과 계산
+// ---------------------------------------------------------------------
+// 제한:
+//   - effects.defenseValueBonus.amount는 1로 캡 (보상 데이터 무관 안전망)
+//   - effects.defenseValueBonus.regions에 명시된 지역에만 적용
+//   - 한 지역에 누적 적용되는 총 보너스는 최대 +2 (캡)
+// combat_resolver의 effectiveProvinceDefense에서 호출.
+// =====================================================================
+export function computePersistentDefenseBonus(state, provinceId) {
+  if (!provinceId) return 0;
+  const rewards = state.persistent?.rewards || [];
+  if (!rewards.length) return 0;
+
+  let total = 0;
+  for (const reward of rewards) {
+    if (reward.applyTiming !== "persistent") continue;
+    const defBonus = reward.effects?.defenseValueBonus;
+    if (!defBonus) continue;
+    const regions = defBonus.regions;
+    if (!Array.isArray(regions) || !regions.includes(provinceId)) continue;
+    // 안전망: amount는 무조건 1로 캡
+    const amount = Math.min(1, Math.max(0, defBonus.amount || 0));
+    total += amount;
+  }
+  // 같은 지역 누적 캡: 최대 +2
+  return Math.min(2, total);
 }
