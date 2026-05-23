@@ -15,7 +15,9 @@ import { addGauge, payCost, resetTurnState } from "./state.js";
 import { turnStartDraw } from "./deck_state.js";
 import {
   applyPerTurnPersistentEffects as applyPersistentPerTurnGain,
-  computePersistentNightOpDefenseDebuff
+  computePersistentNightOpDefenseDebuff,
+  computePersistentTaiwanSupplyDamageReduction,
+  computePersistentUsJapanInterventionGainReduction
 } from "./reward_system.js";
 import {
   LANDING_STAGES,
@@ -56,8 +58,31 @@ const EFFECT_HANDLERS = {
   taiwanSupply: (s, v) => addGauge(s, "taiwanSupply", v),
 
   // ---- 개입 게이지 증가 ----
-  usInterventionGain: (s, v) => addGauge(s, "usIntervention", v),
-  japanInterventionGain: (s, v) => addGauge(s, "japanIntervention", v),
+  usInterventionGain: (s, v) => {
+    // v0.4.0-c2-b3-3b: persistent usJapanInterventionGainReduction (양수 상승만 감쇄)
+    if (v > 0) {
+      const reduction = computePersistentUsJapanInterventionGainReduction(s);
+      const finalGain = reduction > 0 ? Math.ceil(v * (1 - reduction)) : v;
+      addGauge(s, "usIntervention", finalGain);
+      if (reduction > 0 && finalGain < v) {
+        s.thisTurn.operationLog.push(`정보 통제: 미국 개입 상승 +${v} → +${finalGain}`);
+      }
+    } else {
+      addGauge(s, "usIntervention", v);
+    }
+  },
+  japanInterventionGain: (s, v) => {
+    if (v > 0) {
+      const reduction = computePersistentUsJapanInterventionGainReduction(s);
+      const finalGain = reduction > 0 ? Math.ceil(v * (1 - reduction)) : v;
+      addGauge(s, "japanIntervention", finalGain);
+      if (reduction > 0 && finalGain < v) {
+        s.thisTurn.operationLog.push(`정보 통제: 일본 개입 상승 +${v} → +${finalGain}`);
+      }
+    } else {
+      addGauge(s, "japanIntervention", v);
+    }
+  },
   koreaRearSupportGain: (s, v) => addGauge(s, "koreaRearSupport", v),
 
   // ---- 개입 게이지 감소 (중국 디나이얼) ----
@@ -72,7 +97,17 @@ const EFFECT_HANDLERS = {
   // ---- 대만 피해 (음수 방향) ----
   taiwanCommandDamage: (s, v) => addGauge(s, "taiwanCommand", -v),
   taiwanGovernmentDamage: (s, v) => addGauge(s, "taiwanGovernment", -v),
-  taiwanSupplyDamage: (s, v) => addGauge(s, "taiwanSupply", -v),
+  taiwanSupplyDamage: (s, v) => {
+    // v0.4.0-c2-b3-3a: persistent taiwanSupplyDamageReduction 적용
+    const rawDamage = v;
+    const reduction = computePersistentTaiwanSupplyDamageReduction(s);
+    const finalDamage = reduction > 0 ? Math.ceil(rawDamage * (1 - reduction)) : rawDamage;
+    addGauge(s, "taiwanSupply", -finalDamage);
+    // 실제로 피해가 줄었을 때만 로그
+    if (reduction > 0 && finalDamage < rawDamage) {
+      s.thisTurn.operationLog.push(`보급선 우회: 대만 보급 피해 ${rawDamage} → ${finalDamage}`);
+    }
+  },
 
   // ---- 카운터플레이성 감소 (피해 완화) ----
   taiwanCommandDamageReduction: (s, v) => addGauge(s, "taiwanCommand", v),

@@ -237,34 +237,36 @@ if (cn_c2b2.length !== 9) {
 }
 console.log(`  ✓ 대만 11개 (defenseValueBonus 2개 추가), 중국 9개 (b2 미활성)`);
 
-// v0.4.0-c2-b3-1, c2-b3-2: 중국 풀에 rangedAttackBonus + nightOpDefenseDebuff 2개 추가 → 11개
+// v0.4.0-c2-b3-1~3b: 풀 최종
+//   대만 11 + supply_rerouting 1 = 12
+//   중국 9 + missile + night_op + information_control = 12
 const tw_c2b3 = rewardPoolForSide(rewards, "taiwan");
 const cn_c2b3 = rewardPoolForSide(rewards, "china");
-console.log(`c2-b3 풀: 대만 ${tw_c2b3.length}개, 중국 ${cn_c2b3.length}개`);
-if (tw_c2b3.length !== 11) {
-  console.error(`FAIL: 대만 c2-b3 풀 11개 아님 (대만 b3 없음), got ${tw_c2b3.length}`); process.exit(1);
+console.log(`c2-b3 풀 (최종): 대만 ${tw_c2b3.length}개, 중국 ${cn_c2b3.length}개`);
+if (tw_c2b3.length !== 12) {
+  console.error(`FAIL: 대만 c2-b3 풀 12개 아님, got ${tw_c2b3.length}`); process.exit(1);
 }
-if (cn_c2b3.length !== 11) {
-  console.error(`FAIL: 중국 c2-b3 풀 11개 아님 (missile + night_op 추가), got ${cn_c2b3.length}`); process.exit(1);
+if (cn_c2b3.length !== 12) {
+  console.error(`FAIL: 중국 c2-b3 풀 12개 아님 (3개 모두 활성), got ${cn_c2b3.length}`); process.exit(1);
 }
 const missile = cn_c2b3.find(r => r.id === "cn_missile_range_extend");
 const nightOp = cn_c2b3.find(r => r.id === "cn_night_op_efficiency");
+const supplyReroute = tw_c2b3.find(r => r.id === "tw_supply_rerouting");
+const infoControl = cn_c2b3.find(r => r.id === "cn_information_control");
 if (!missile) { console.error(`FAIL: cn_missile_range_extend 없음`); process.exit(1); }
 if (!nightOp) { console.error(`FAIL: cn_night_op_efficiency 없음`); process.exit(1); }
-console.log(`  ✓ 중국 11개 (rangedAttackBonus + nightOpDefenseDebuff 추가)`);
+if (!supplyReroute) { console.error(`FAIL: tw_supply_rerouting 없음`); process.exit(1); }
+if (!infoControl) { console.error(`FAIL: cn_information_control 없음 (b3-3b)`); process.exit(1); }
+console.log(`  ✓ 대만 12 (supply_rerouting), 중국 12 (missile + night_op + info_control)`);
+console.log(`  ✓ c2-b3 시리즈 4개 보상 모두 활성`);
 
-// 아직 비활성: tw_supply_rerouting, cn_information_control
-const otherB3 = ["tw_supply_rerouting", "cn_information_control"];
-for (const id of otherB3) {
-  const inPool = [...tw_c2b3, ...cn_c2b3].find(r => r.id === id);
-  if (inPool) {
-    console.error(`FAIL: ${id}는 c2-b3-2에서 활성화되면 안 됨`); process.exit(1);
-  }
-}
-console.log(`  ✓ 감쇄형 보상 2개 (보급 우회/정보 통제)는 아직 비활성`);
+import {
+  computePersistentNightOpDefenseDebuff,
+  computePersistentTaiwanSupplyDamageReduction,
+  computePersistentUsJapanInterventionGainReduction
+} from "./reward_system.js";
 
 // c2-b3-2: computePersistentNightOpDefenseDebuff 동작
-import { computePersistentNightOpDefenseDebuff } from "./reward_system.js";
 const nightTestState = { gauges: {}, persistent: { rewards: [] }, log: [], turn: 1 };
 if (computePersistentNightOpDefenseDebuff(nightTestState) !== 0) {
   console.error(`FAIL: 빈 state에서 0 아님`); process.exit(1);
@@ -286,6 +288,54 @@ if (computePersistentNightOpDefenseDebuff(fakeNightState) !== 1) {
   console.error(`FAIL: amount=5도 cap 1 안 됨`); process.exit(1);
 }
 console.log(`  ✓ amount=5 보상도 cap 1로 강제`);
+
+// v0.4.0-c2-b3-3a: computePersistentTaiwanSupplyDamageReduction 동작
+const reductionState = { gauges: {}, persistent: { rewards: [] }, log: [], turn: 1 };
+if (computePersistentTaiwanSupplyDamageReduction(reductionState) !== 0) {
+  console.error(`FAIL: 빈 state reduction 0 아님`); process.exit(1);
+}
+applyReward(reductionState, supplyReroute);
+const reductionAfter = computePersistentTaiwanSupplyDamageReduction(reductionState);
+if (Math.abs(reductionAfter - 0.3) > 0.001) {
+  console.error(`FAIL: reduction 0.3 아님, got ${reductionAfter}`); process.exit(1);
+}
+console.log(`  ✓ computePersistentTaiwanSupplyDamageReduction: 빈 0, 활성 0.3`);
+
+// cap 0.3 검증 — 가짜 보상 amount 0.9 → 0.3 cap
+const fakeReductionState = {
+  gauges: {}, persistent: { rewards: [
+    { id: "fake_huge_reduction", applyTiming: "persistent", effects: { taiwanSupplyDamageReduction: 0.9 } }
+  ] }, log: [], turn: 1
+};
+const capped = computePersistentTaiwanSupplyDamageReduction(fakeReductionState);
+if (Math.abs(capped - 0.3) > 0.001) {
+  console.error(`FAIL: cap 0.3 안 됨, got ${capped}`); process.exit(1);
+}
+console.log(`  ✓ amount=0.9 reward → 0.3 cap`);
+
+// v0.4.0-c2-b3-3b: computePersistentUsJapanInterventionGainReduction 동작
+const infoState = { gauges: {}, persistent: { rewards: [] }, log: [], turn: 1 };
+if (computePersistentUsJapanInterventionGainReduction(infoState) !== 0) {
+  console.error(`FAIL: 빈 state info reduction 0 아님`); process.exit(1);
+}
+applyReward(infoState, infoControl);
+const infoAfter = computePersistentUsJapanInterventionGainReduction(infoState);
+if (Math.abs(infoAfter - 0.25) > 0.001) {
+  console.error(`FAIL: info reduction 0.25 아님, got ${infoAfter}`); process.exit(1);
+}
+console.log(`  ✓ computePersistentUsJapanInterventionGainReduction: 빈 0, 활성 0.25`);
+
+// cap 0.25 검증 — 가짜 보상 amount 0.9 → 0.25 cap
+const fakeInfoState = {
+  gauges: {}, persistent: { rewards: [
+    { id: "fake_info_huge", applyTiming: "persistent", effects: { usJapanInterventionGainReduction: 0.9 } }
+  ] }, log: [], turn: 1
+};
+const infoCapped = computePersistentUsJapanInterventionGainReduction(fakeInfoState);
+if (Math.abs(infoCapped - 0.25) > 0.001) {
+  console.error(`FAIL: info cap 0.25 안 됨, got ${infoCapped}`); process.exit(1);
+}
+console.log(`  ✓ amount=0.9 info reward → 0.25 cap`);
 
 // v0.4.0-c2-b2.1: 항만 방어 공사는 지룽/가오슝 (타이난 X)
 const defTestState = { gauges: {}, persistent: { rewards: [], provinces: {} }, log: [], turn: 1 };

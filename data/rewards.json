@@ -1,5 +1,5 @@
 {
-  "version": "0.4.0-c2-b3-2",
+  "version": "0.4.0-c2-b3-3b",
   "rewards": [
     {
       "id": "tw_reserve_remobilize",
@@ -209,7 +209,8 @@
           "value": 60,
           "weight": 4
         }
-      ]
+      ],
+      "enabledInC2b3": true
     },
     {
       "id": "tw_humanitarian_campaign",
@@ -477,12 +478,20 @@
       "name": "정보 통제 강화",
       "side": "china",
       "category": "diplomacy",
-      "description": "국제 여론 손실을 영구히 줄입니다.",
+      "description": "국제 보도/외교 프레임을 통제해 미국·일본 개입 상승 속도를 영구히 늦춥니다.",
       "applyTiming": "persistent",
       "enabledInC1": false,
       "effects": {
-        "internationalOpinionLossReduction": 0.3
-      }
+        "usJapanInterventionGainReduction": 0.25
+      },
+      "enabledInC2b3": true,
+      "weightConditions": [
+        {
+          "if": "usInterventionAbove",
+          "value": 50,
+          "weight": 3
+        }
+      ]
     },
     {
       "id": "cn_card_blitz",

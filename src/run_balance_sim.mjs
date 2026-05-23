@@ -286,6 +286,63 @@ for (let i = 0; i < RUNS; i++) {
 
 const summary = aggregate(results);
 
+// v0.4.0-c2-measure-1: --json 옵션이면 텍스트 출력 대신 JSON dump
+// compare 스크립트가 spawn해서 결과를 안정적으로 받기 위함.
+const JSON_OUT = Boolean(args.json);
+
+if (JSON_OUT) {
+  const allRewards = results.flatMap(r => r.rewardLog || []);
+  const totalSelected = allRewards.length;
+  const taiwanSelected = allRewards.filter(r => r.side === "taiwan").length;
+  const chinaSelected = allRewards.filter(r => r.side === "china").length;
+  const rewardCounts = {};
+  for (const r of allRewards) {
+    const key = `${r.side}:${r.rewardName}`;
+    rewardCounts[key] = (rewardCounts[key] || 0) + 1;
+  }
+  const topRewards = Object.entries(rewardCounts)
+    .sort((a, b) => b[1] - a[1]).slice(0, 10)
+    .map(([name, count]) => ({ name, count }));
+  const avgPersistTaiwan = avg(results.map(r =>
+    (r.rewardLog || []).filter(x => x.side === "taiwan" && x.applyTiming === "persistent").length
+  ));
+  const avgPersistChina = avg(results.map(r =>
+    (r.rewardLog || []).filter(x => x.side === "china" && x.applyTiming === "persistent").length
+  ));
+
+  const out = {
+    buildTag: BUILD_FULL,
+    runs: RUNS,
+    baseSeed: BASE_SEED,
+    rewardSide: REWARD_SIDE,
+    totalTurns: GAME_RULES.totalTurns,
+    outcome: {
+      counts: summary.outcomeCounts,
+      rates: summary.outcomeRates,
+      avgFinalTurn: summary.avgFinalTurn
+    },
+    avgFinalGauges: summary.avgFinalGauges,
+    combat: {
+      total: summary.combatTotal,
+      success: summary.combatSuccess,
+      successRate: summary.combatSuccessRate
+    },
+    rewards: REWARD_SIDE !== "none" ? {
+      selectedTotal: totalSelected,
+      taiwanSelected,
+      chinaSelected,
+      persistentOwnedAvg: {
+        taiwan: Number(avgPersistTaiwan.toFixed(2)),
+        china: Number(avgPersistChina.toFixed(2))
+      },
+      topRewards,
+      rawCounts: rewardCounts  // v0.4.0-c2-b3-3a: 보상별 정확한 카운트 (compare에서 조회)
+    } : null
+  };
+  process.stdout.write(JSON.stringify(out));
+  process.exit(0);
+}
+
 console.log(`\n=== Strait 72 ${BUILD_FULL} balance simulation ===`);
 console.log(`runs=${RUNS} seed=${BASE_SEED} totalTurns=${GAME_RULES.totalTurns} hoursPerTurn=${GAME_RULES.hoursPerTurn}`);
 console.log("\n[Outcome]");

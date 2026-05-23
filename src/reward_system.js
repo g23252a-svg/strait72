@@ -183,6 +183,14 @@ export function describeRewardApplication(reward, result, state = null) {
       // v0.4.0-c2-b3-2: nightOpDefenseDebuff
       const amount = Math.min(1, Math.max(0, reward.effects.nightOpDefenseDebuff));
       parts.push(`(영구: 야간 작전 시 대만 방어 -${amount} 추가)`);
+    } else if (typeof reward.effects?.taiwanSupplyDamageReduction === "number") {
+      // v0.4.0-c2-b3-3a: 대만 보급 피해 감쇄
+      const reduction = Math.min(0.3, Math.max(0, reward.effects.taiwanSupplyDamageReduction));
+      parts.push(`(영구: 대만 보급 피해 ${Math.round(reduction * 100)}% 감소)`);
+    } else if (typeof reward.effects?.usJapanInterventionGainReduction === "number") {
+      // v0.4.0-c2-b3-3b: 미국/일본 개입 상승량 감쇄
+      const reduction = Math.min(0.25, Math.max(0, reward.effects.usJapanInterventionGainReduction));
+      parts.push(`(영구: 미국/일본 개입 상승 ${Math.round(reduction * 100)}% 감소)`);
     } else {
       parts.push("(영구 효과 등록 — c2-b3에서 활성)");
     }
@@ -320,6 +328,54 @@ export function computePersistentNightOpDefenseDebuff(state) {
   }
   return total;
 }
+
+// =====================================================================
+// v0.4.0-c2-b3-3a: 대만 보급 피해 감쇄 (taiwanSupplyDamageReduction)
+// ---------------------------------------------------------------------
+// 제한:
+//   - 감쇄율 cap 0.3 (안전망: 보상이 여럿이어도 총 0.3 초과 X)
+//   - 적용 지점: turn_resolver applyEffects의 taiwanSupplyDamage 핸들러
+//   - 공식: Math.ceil(rawDamage * (1 - reduction))
+//   - 현재는 tw_supply_rerouting 1개. 합산하되 0.3 cap.
+// =====================================================================
+export function computePersistentTaiwanSupplyDamageReduction(state) {
+  const rewards = state.persistent?.rewards || [];
+  if (!rewards.length) return 0;
+
+  let total = 0;
+  for (const r of rewards) {
+    if (r.applyTiming !== "persistent") continue;
+    const amount = r.effects?.taiwanSupplyDamageReduction;
+    if (typeof amount !== "number") continue;
+    total += Math.max(0, amount);
+  }
+  return Math.min(0.3, total);
+}
+
+// =====================================================================
+// v0.4.0-c2-b3-3b: 미국/일본 개입 상승량 감쇄 (usJapanInterventionGainReduction)
+// ---------------------------------------------------------------------
+// 제한:
+//   - 감쇄율 cap 0.25 (사용자 명세: 25% — 중국 보상 누적 폭주 방지)
+//   - 적용 지점: turn_resolver applyEffects의 usInterventionGain / japanInterventionGain
+//   - 적용 조건: v > 0 (개입 상승 시만, 감소 효과는 그대로)
+//   - 미적용: koreaRearSupportGain, internationalOpinion, 대만 내부 게이지
+//   - 공식: Math.ceil(rawGain * (1 - reduction))
+//   - 현재는 cn_information_control 1개. 합산하되 0.25 cap.
+// =====================================================================
+export function computePersistentUsJapanInterventionGainReduction(state) {
+  const rewards = state.persistent?.rewards || [];
+  if (!rewards.length) return 0;
+
+  let total = 0;
+  for (const r of rewards) {
+    if (r.applyTiming !== "persistent") continue;
+    const amount = r.effects?.usJapanInterventionGainReduction;
+    if (typeof amount !== "number") continue;
+    total += Math.max(0, amount);
+  }
+  return Math.min(0.25, total);
+}
 // ---------------------------------------------------------------------
 // 정책 (사용자 명세 그대로):
 //   - base 10
@@ -362,6 +418,24 @@ export function scoreRewardUtility(reward, state, dayReport, side, dayNumber, op
       // 발동 빈도가 ranged보다 더 적음 (특정 카드 1장). 계수 0.6.
       const amount = Math.min(1, Math.max(0, reward.effects.nightOpDefenseDebuff));
       score += turnsLeft * amount * 0.6;
+    } else if (typeof reward.effects?.taiwanSupplyDamageReduction === "number") {
+      // v0.4.0-c2-b3-3a: 대만 보급 감쇄 — 30%가 평균 3대미지 → 절감 ~1 단위, 발동 빈도 카드 의존
+      // 부족도 곱하기: 현재 보급 낮을수록 효용 ↑
+      const reduction = Math.min(0.3, Math.max(0, reward.effects.taiwanSupplyDamageReduction));
+      const curSupply = state.gauges?.taiwanSupply ?? 80;
+      const deficiency = Math.max(0, (100 - curSupply) / 100); // 0~1
+      // turnsLeft × reduction × 10 (전체 영향 추정) × (0.5 + deficiency)
+      score += turnsLeft * reduction * 10 * (0.5 + deficiency);
+    } else if (typeof reward.effects?.usJapanInterventionGainReduction === "number") {
+      // v0.4.0-c2-b3-3b: 미국/일본 개입 상승량 감쇄
+      // 두 게이지 모두 감쇄. us/japan 게이지가 높을수록 (위협↑) 효용↑
+      const reduction = Math.min(0.25, Math.max(0, reward.effects.usJapanInterventionGainReduction));
+      const us = state.gauges?.usIntervention ?? 30;
+      const japan = state.gauges?.japanIntervention ?? 20;
+      // 평균 임박도: 80에 가까울수록 (개입 임박 = 중국 패배 임박) 가치↑
+      const urgency = Math.max(0, ((us + japan) / 2 - 30) / 70); // 0~1
+      // turnsLeft × reduction × 12 × (0.5 + urgency)
+      score += turnsLeft * reduction * 12 * (0.5 + urgency);
     }
   }
 

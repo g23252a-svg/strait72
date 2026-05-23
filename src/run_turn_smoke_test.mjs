@@ -188,4 +188,151 @@ console.log(`  ✓ source 없음 + 보상 있음: defenseDebuff = ${stD.thisTurn
 
 console.log("✓ c2-b3-2 nightOpDefenseDebuff 검증 통과");
 
+// =====================================================================
+// v0.4.0-c2-b3-3a: taiwanSupplyDamage가 reduction 적용되는지
+// =====================================================================
+console.log("\n[c2-b3-3a taiwanSupplyDamage reduction]");
+
+// case A: 보상 없는 상태 — 피해 그대로
+const supA = { gauges: { taiwanSupply: 80 }, thisTurn: { defenseDebuff: 0, operationLog: [] }, persistent: { rewards: [] }, log: [], turn: 1 };
+applyEffects(supA, { taiwanSupplyDamage: 10 }, { side: "china" });
+if (supA.gauges.taiwanSupply !== 70) {
+  console.error(`FAIL: 보상 없음 supply 70 아님, got ${supA.gauges.taiwanSupply}`); process.exit(1);
+}
+if (supA.thisTurn.operationLog.some(l => l.includes("보급선 우회"))) {
+  console.error(`FAIL: 보상 없는데 보급선 우회 로그 발생`); process.exit(1);
+}
+console.log(`  ✓ 보상 없음: supply 80 → 70 (피해 10 그대로), 로그 없음`);
+
+// case B: reduction 0.3 보상 — 피해 10 → ceil(10*0.7) = 7
+const supB = { gauges: { taiwanSupply: 80 }, thisTurn: { defenseDebuff: 0, operationLog: [] }, persistent: { rewards: [
+  { id: "tw_supply_rerouting", name: "보급선 우회", applyTiming: "persistent", effects: { taiwanSupplyDamageReduction: 0.3 } }
+] }, log: [], turn: 1 };
+applyEffects(supB, { taiwanSupplyDamage: 10 }, { side: "china" });
+if (supB.gauges.taiwanSupply !== 73) {
+  console.error(`FAIL: reduction 0.3에서 supply 73 아님, got ${supB.gauges.taiwanSupply}`); process.exit(1);
+}
+if (!supB.thisTurn.operationLog.some(l => l.includes("보급선 우회: 대만 보급 피해 10 → 7"))) {
+  console.error(`FAIL: 보급선 우회 로그 형식 부정확. log: ${supB.thisTurn.operationLog.join("|")}`); process.exit(1);
+}
+console.log(`  ✓ reduction 0.3: supply 80 → 73 (10 → 7, ceil), 로그: ${supB.thisTurn.operationLog.find(l => l.includes("보급선 우회"))}`);
+
+// case C: cap 0.3 — amount 0.9 보상도 7로 감쇄 (cap)
+const supC = { gauges: { taiwanSupply: 80 }, thisTurn: { defenseDebuff: 0, operationLog: [] }, persistent: { rewards: [
+  { id: "fake_huge", applyTiming: "persistent", effects: { taiwanSupplyDamageReduction: 0.9 } }
+] }, log: [], turn: 1 };
+applyEffects(supC, { taiwanSupplyDamage: 10 }, { side: "china" });
+if (supC.gauges.taiwanSupply !== 73) {
+  console.error(`FAIL: cap 0.3 안 됨. supply ${supC.gauges.taiwanSupply}, expected 73`); process.exit(1);
+}
+console.log(`  ✓ cap 0.3: amount=0.9도 73 (피해 7만 적용)`);
+
+// case D: 작은 피해 1 → ceil(1*0.7) = 1 (감소 없음, 로그 없음)
+const supD = { gauges: { taiwanSupply: 80 }, thisTurn: { defenseDebuff: 0, operationLog: [] }, persistent: { rewards: [
+  { id: "tw_supply_rerouting", applyTiming: "persistent", effects: { taiwanSupplyDamageReduction: 0.3 } }
+] }, log: [], turn: 1 };
+applyEffects(supD, { taiwanSupplyDamage: 1 }, { side: "china" });
+if (supD.gauges.taiwanSupply !== 79) {
+  console.error(`FAIL: 작은 피해 1 적용 안 됨, got ${supD.gauges.taiwanSupply}`); process.exit(1);
+}
+if (supD.thisTurn.operationLog.some(l => l.includes("보급선 우회"))) {
+  console.error(`FAIL: 피해 실제로 안 줄었는데 로그 발생`); process.exit(1);
+}
+console.log(`  ✓ 피해 1 → ceil(0.7) = 1 (감소 없음 → 로그 없음, ceil 정책 정상)`);
+
+// case E: 다른 게이지 (taiwanGovernment)에는 영향 없음
+const supE = { gauges: { taiwanGovernment: 80, taiwanSupply: 80 }, thisTurn: { defenseDebuff: 0, operationLog: [] }, persistent: { rewards: [
+  { id: "tw_supply_rerouting", applyTiming: "persistent", effects: { taiwanSupplyDamageReduction: 0.3 } }
+] }, log: [], turn: 1 };
+applyEffects(supE, { taiwanGovernmentDamage: 10 }, { side: "china" });
+if (supE.gauges.taiwanGovernment !== 70) {
+  console.error(`FAIL: taiwanGovernmentDamage 영향 받음`); process.exit(1);
+}
+console.log(`  ✓ taiwanGovernmentDamage는 영향 없음 (보급에만 적용)`);
+
+console.log("✓ c2-b3-3a taiwanSupplyDamageReduction 검증 통과");
+
+// =====================================================================
+// v0.4.0-c2-b3-3b: usJapanInterventionGainReduction 적용 범위
+// (사용자 명세 7가지: 보상없음/0.25/일본/+1유지/음수보존/internationalOpinion미영향/korea미영향)
+// =====================================================================
+console.log("\n[c2-b3-3b usJapanInterventionGainReduction 적용 범위]");
+
+// case 1: 보상 없음 — 미국 +8 그대로
+const infoA = { gauges: { usIntervention: 30 }, thisTurn: { defenseDebuff: 0, operationLog: [] }, persistent: { rewards: [] }, log: [], turn: 1 };
+applyEffects(infoA, { usInterventionGain: 8 }, { side: "taiwan" });
+if (infoA.gauges.usIntervention !== 38) {
+  console.error(`FAIL: 보상 없음 us 38 아님, got ${infoA.gauges.usIntervention}`); process.exit(1);
+}
+if (infoA.thisTurn.operationLog.some(l => l.includes("정보 통제"))) {
+  console.error(`FAIL: 보상 없는데 정보 통제 로그 발생`); process.exit(1);
+}
+console.log(`  ✓ 1. 보상 없음: us 30 → 38 (+8 그대로), 로그 없음`);
+
+// case 2: 정보 통제 0.25 — 미국 +8 → +6 (ceil(8*0.75) = 6)
+const infoB = { gauges: { usIntervention: 30, japanIntervention: 20 }, thisTurn: { defenseDebuff: 0, operationLog: [] }, persistent: { rewards: [
+  { id: "cn_information_control", name: "정보 통제 강화", applyTiming: "persistent", effects: { usJapanInterventionGainReduction: 0.25 } }
+] }, log: [], turn: 1 };
+applyEffects(infoB, { usInterventionGain: 8 }, { side: "taiwan" });
+if (infoB.gauges.usIntervention !== 36) {
+  console.error(`FAIL: us 36 아님 (8 → 6), got ${infoB.gauges.usIntervention}`); process.exit(1);
+}
+if (!infoB.thisTurn.operationLog.some(l => l.includes("정보 통제: 미국 개입 상승 +8 → +6"))) {
+  console.error(`FAIL: 정보 통제 로그 누락 또는 형식 부정확. log: ${infoB.thisTurn.operationLog.join("|")}`); process.exit(1);
+}
+console.log(`  ✓ 2. 정보 통제 0.25: us +8 → +6 (ceil), 로그 정상`);
+
+// case 3: 일본 +5 → +4 (ceil(5*0.75) = 4)
+applyEffects(infoB, { japanInterventionGain: 5 }, { side: "taiwan" });
+if (infoB.gauges.japanIntervention !== 24) {
+  console.error(`FAIL: japan 24 아님 (20 + 4), got ${infoB.gauges.japanIntervention}`); process.exit(1);
+}
+console.log(`  ✓ 3. 일본 +5 → +4 (ceil)`);
+
+// case 4: 미국 +1 → +1 유지 (ceil(1*0.75) = ceil(0.75) = 1)
+const infoC = { gauges: { usIntervention: 30 }, thisTurn: { defenseDebuff: 0, operationLog: [] }, persistent: { rewards: [
+  { id: "cn_information_control", applyTiming: "persistent", effects: { usJapanInterventionGainReduction: 0.25 } }
+] }, log: [], turn: 1 };
+applyEffects(infoC, { usInterventionGain: 1 }, { side: "taiwan" });
+if (infoC.gauges.usIntervention !== 31) {
+  console.error(`FAIL: us +1 유지 안 됨, got ${infoC.gauges.usIntervention}`); process.exit(1);
+}
+if (infoC.thisTurn.operationLog.some(l => l.includes("정보 통제"))) {
+  console.error(`FAIL: 감소 없는데 로그 발생`); process.exit(1);
+}
+console.log(`  ✓ 4. 미국 +1 → +1 유지 (ceil로 소량 변화 보존, 로그 없음)`);
+
+// case 5: 음수 효과는 그대로 보존 — 미국 게이지를 빼는 효과는 reduction 적용 X
+// 시뮬에서 음수 usInterventionGain은 거의 없지만 안전망. usInterventionGainReduction 효과 키 사용
+const infoD = { gauges: { usIntervention: 50 }, thisTurn: { defenseDebuff: 0, operationLog: [] }, persistent: { rewards: [
+  { id: "cn_information_control", applyTiming: "persistent", effects: { usJapanInterventionGainReduction: 0.25 } }
+] }, log: [], turn: 1 };
+applyEffects(infoD, { usInterventionGainReduction: 6 }, { side: "china" });
+if (infoD.gauges.usIntervention !== 44) {
+  console.error(`FAIL: usInterventionGainReduction 영향 받음, got ${infoD.gauges.usIntervention}`); process.exit(1);
+}
+console.log(`  ✓ 5. 음수 효과 (usInterventionGainReduction)는 그대로 -6`);
+
+// case 6: internationalOpinion은 영향 없음 (범위 새지 않음)
+const infoE = { gauges: { internationalOpinion: 50 }, thisTurn: { defenseDebuff: 0, operationLog: [] }, persistent: { rewards: [
+  { id: "cn_information_control", applyTiming: "persistent", effects: { usJapanInterventionGainReduction: 0.25 } }
+] }, log: [], turn: 1 };
+applyEffects(infoE, { internationalOpinion: 8 }, { side: "taiwan" });
+if (infoE.gauges.internationalOpinion !== 58) {
+  console.error(`FAIL: internationalOpinion 영향 받음, got ${infoE.gauges.internationalOpinion}`); process.exit(1);
+}
+console.log(`  ✓ 6. internationalOpinion은 영향 없음 (+8 그대로)`);
+
+// case 7: koreaRearSupportGain은 영향 없음
+const infoF = { gauges: { koreaRearSupport: 20 }, thisTurn: { defenseDebuff: 0, operationLog: [] }, persistent: { rewards: [
+  { id: "cn_information_control", applyTiming: "persistent", effects: { usJapanInterventionGainReduction: 0.25 } }
+] }, log: [], turn: 1 };
+applyEffects(infoF, { koreaRearSupportGain: 6 }, { side: "taiwan" });
+if (infoF.gauges.koreaRearSupport !== 26) {
+  console.error(`FAIL: koreaRearSupport 영향 받음, got ${infoF.gauges.koreaRearSupport}`); process.exit(1);
+}
+console.log(`  ✓ 7. koreaRearSupport는 영향 없음 (+6 그대로)`);
+
+console.log("✓ c2-b3-3b usJapanInterventionGainReduction 검증 통과");
+
 Math.random = origRandom;

@@ -59,7 +59,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.4.0-c2-b3-2";
+const EXPECTED_BUILD = "v0.4.0-c2-b3-3b";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -1196,7 +1196,7 @@ function showDayEndModal(dayNumber) {
   overlay.style.cssText = `
     position: fixed; inset: 0; z-index: 4000;
     background: rgba(3, 8, 18, .88);
-    display: flex; align-items: center; justify-content: center;
+    display: flex; align-items: flex-start; justify-content: center;
     padding: 24px; overflow-y: auto;
     animation: fadeIn .2s ease;
   `;
@@ -1278,7 +1278,18 @@ function showDayEndModal(dayNumber) {
         padding: 26px 28px 22px;
         color: #eaf3ff;
         box-shadow: 0 30px 80px rgba(0,0,0,.7);
+        /* v0.4.0-c2-b3-3b: 화면 짤림 방지 — 모달 자체 max-height + overflow */
+        max-height: calc(100vh - 48px);
+        overflow-y: auto;
+        margin: auto 0;
       }
+      /* 모달 내부 스크롤바 디자인 (어두운 테마 일치) */
+      .day-modal::-webkit-scrollbar { width: 8px; }
+      .day-modal::-webkit-scrollbar-thumb {
+        background: rgba(124, 171, 220, .25);
+        border-radius: 4px;
+      }
+      .day-modal::-webkit-scrollbar-thumb:hover { background: rgba(124, 171, 220, .45); }
       .day-header { text-align: center; border-bottom: 1px solid rgba(255,255,255,.08); padding-bottom: 14px; margin-bottom: 16px; }
       .day-header h2 { margin: 0; font-size: 22px; font-weight: 800; color: #ffd66b; letter-spacing: 1px; }
       .day-subtitle { margin: 4px 0 0; font-size: 11.5px; color: rgba(234, 243, 255, .55); letter-spacing: 1.5px; }
@@ -1528,6 +1539,14 @@ function renderRewardCard(reward) {
       // v0.4.0-c2-b3-2: 야간 작전 효율
       const amount = Math.min(1, Math.max(0, eff.nightOpDefenseDebuff));
       effectText = `🌙 야간 작전 시 대만 방어 -${amount} 추가 (영구)`;
+    } else if (typeof eff.taiwanSupplyDamageReduction === "number") {
+      // v0.4.0-c2-b3-3a: 대만 보급 우회
+      const reduction = Math.min(0.3, Math.max(0, eff.taiwanSupplyDamageReduction));
+      effectText = `🚛 대만 보급 피해 ${Math.round(reduction * 100)}% 감소 (영구, 최대 30% 캡)`;
+    } else if (typeof eff.usJapanInterventionGainReduction === "number") {
+      // v0.4.0-c2-b3-3b: 정보 통제 — 미국/일본 개입 상승 감쇄
+      const reduction = Math.min(0.25, Math.max(0, eff.usJapanInterventionGainReduction));
+      effectText = `📡 미국/일본 개입 상승 ${Math.round(reduction * 100)}% 감소 (영구, 최대 25% 캡)`;
     } else {
       // c2-b3 예정 효과 (rangedAttackBonus, nightOpDefenseDebuff, supplyDamageReduction 등)
       effectText = "영구 효과 — 캠페인 동안 유지 (c2-b3에서 활성)";
