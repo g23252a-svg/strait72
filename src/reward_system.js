@@ -360,17 +360,22 @@ function scoreDefenseValueBonus(reward, state, dayReport) {
     const factor = Math.min(1, headroom);
 
     // 위협도 평가
+    //   - 손실: 25 (이번 DAY에 실제로 점령된 지역)
+    //   - 상륙 진행 중: 18
+    //   - 수도권 압박 상황 + 수도권 지역: 20  (분기 순서 주의 — 수도권 일반 분기 앞에 와야 도달함)
+    //   - 단순 수도권 지역: 10
+    //   - 평온: 3
     const province = state.provinces?.[provId];
+    const isCapitalRegion = ["taipei", "keelung", "taoyuan"].includes(provId);
     let threat = 3; // 평온 기본
     if (dayReport?.occupationChanges?.some(o => o.provinceId === provId && o.isLoss)) {
       threat = 25;
     } else if (province?.landingStage && province.landingStage !== "none") {
       threat = 18; // 이미 상륙 진행 중
-    } else if (["taipei", "keelung", "taoyuan"].includes(provId)) {
-      threat = 10; // 수도권 가중치
-    } else if (state.persistent?.capitalPressureTurns >= 1
-              && ["taipei", "keelung", "taoyuan"].includes(provId)) {
-      threat = 20;
+    } else if ((state.persistent?.capitalPressureTurns || 0) >= 1 && isCapitalRegion) {
+      threat = 20; // 수도권 압박 상황 — 단순 수도권 분기보다 먼저 와야 함
+    } else if (isCapitalRegion) {
+      threat = 10; // 수도권 평시
     }
     s += threat * factor;
   }

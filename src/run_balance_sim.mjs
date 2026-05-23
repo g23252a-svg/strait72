@@ -149,13 +149,22 @@ function runSingle(seed, { collectCurve = false } = {}) {
       const dayNumber = dayNumberForTurn(turnBefore);
       const dayReport = buildDayReport(state, dayNumber, events);
       const sides = REWARD_SIDE === "both" ? ["taiwan", "china"] : [REWARD_SIDE];
+
+      // v0.4.0-c2-z-lite.1: 양쪽 선택을 *같은 pre-reward 상태에서* 결정한 후 순차 apply.
+      // both 모드에서 대만의 적용 결과가 중국의 선택 후보/점수에 영향 주는 순서 편향 제거.
+      const choices = [];
       for (const side of sides) {
         const candidates = drawRewards(rewardsAll, side, state, dayReport, 3);
-        if (!candidates.length) continue;
+        if (!candidates.length) { choices.push(null); continue; }
         const choice = chooseRewardForSim(candidates, state, dayReport, side, dayNumber, {
           totalTurns: GAME_RULES.totalTurns, turnsPerDay: TURNS_PER_DAY
         });
-        if (!choice) continue;
+        choices.push({ side, candidates, choice });
+      }
+
+      for (const entry of choices) {
+        if (!entry?.choice) continue;
+        const { side, candidates, choice } = entry;
         const applyResult = applyReward(state, choice.reward);
         rewardLog.push({
           dayNumber,

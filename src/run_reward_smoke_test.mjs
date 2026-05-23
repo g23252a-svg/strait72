@@ -350,4 +350,62 @@ if (!stillHasCardReward) {
 }
 console.log(`  ✓ add_card 보상 (긴급 복구 카드)은 한 번 받아도 풀에 남음 (중복 가능)`);
 
+// =====================================================================
+// v0.4.0-c2-z-lite.1: 효용 점수 / 시뮬 선택 자동 검증
+// =====================================================================
+console.log(`\n[c2-z-lite.1 효용 점수 검증]`);
+import { scoreRewardUtility, chooseRewardForSim } from "./reward_system.js";
+
+// 1. scoreDefenseValueBonus: capitalPressureTurns 상황에서 북부 보상 threat가 평시보다 높음
+const northReward = rewards.find(r => r.id === "tw_north_defense_dig_in"); // taipei/keelung/taoyuan
+const peaceState = {
+  gauges: {}, persistent: { rewards: [], capitalPressureTurns: 0 },
+  provinces: { taipei: { name: "타이베이" }, keelung: { name: "지룽" }, taoyuan: { name: "타오위안" } },
+  turn: 8, log: []
+};
+const pressureState = {
+  gauges: {}, persistent: { rewards: [], capitalPressureTurns: 2 },
+  provinces: { taipei: { name: "타이베이" }, keelung: { name: "지룽" }, taoyuan: { name: "타오위안" } },
+  turn: 8, log: []
+};
+const emptyDayReport = { occupationChanges: [], majorBattles: [], events: [] };
+const peaceScore = scoreRewardUtility(northReward, peaceState, emptyDayReport, "taiwan", 2);
+const pressureScore = scoreRewardUtility(northReward, pressureState, emptyDayReport, "taiwan", 2);
+console.log(`  평시 북부 진지 점수: ${peaceScore.toFixed(2)}`);
+console.log(`  수도권 압박 시 점수: ${pressureScore.toFixed(2)}`);
+if (pressureScore <= peaceScore) {
+  console.error(`FAIL: capitalPressureTurns 상황 점수가 평시보다 높지 않음 (분기 순서 버그?)`); process.exit(1);
+}
+console.log(`  ✓ 수도권 압박 시 점수 ↑ (분기 순서 정상)`);
+
+// 2. chooseRewardForSim: 동점이면 후보 순서 유지
+const equalReward1 = { id: "fake_a", name: "A", applyTiming: "instant", effects: {} };
+const equalReward2 = { id: "fake_b", name: "B", applyTiming: "instant", effects: {} };
+const tieState = { gauges: {}, persistent: { rewards: [] }, turn: 1, log: [] };
+const tieResult = chooseRewardForSim([equalReward1, equalReward2], tieState, emptyDayReport, "taiwan", 1);
+if (tieResult.reward.id !== "fake_a") {
+  console.error(`FAIL: 동점 시 첫 번째 후보 안 뽑음, got ${tieResult.reward.id}`); process.exit(1);
+}
+console.log(`  ✓ 동점 시 candidates 순서 유지 (fake_a 선택)`);
+
+// 3. 같은 입력 두 번 호출 → 같은 결과 (deterministic)
+const tieR1 = chooseRewardForSim([equalReward1, equalReward2], tieState, emptyDayReport, "taiwan", 1);
+const tieR2 = chooseRewardForSim([equalReward1, equalReward2], tieState, emptyDayReport, "taiwan", 1);
+if (tieR1.reward.id !== tieR2.reward.id || tieR1.score !== tieR2.score) {
+  console.error(`FAIL: 같은 입력 두 번 결과 다름`); process.exit(1);
+}
+console.log(`  ✓ deterministic`);
+
+// 4. 효용 점수 차별화 — instant 회복 점수가 부족도에 따라 달라짐
+const supply = rewards.find(r => r.id === "tw_emergency_supply"); // taiwanSupply +12
+const utilLowSupply = { gauges: { taiwanSupply: 20 }, persistent: { rewards: [] }, turn: 1, log: [] };
+const utilHighSupply = { gauges: { taiwanSupply: 95 }, persistent: { rewards: [] }, turn: 1, log: [] };
+const lowScore = scoreRewardUtility(supply, utilLowSupply, emptyDayReport, "taiwan", 1);
+const highScore = scoreRewardUtility(supply, utilHighSupply, emptyDayReport, "taiwan", 1);
+console.log(`  보급 20에서 점수: ${lowScore.toFixed(2)} / 보급 95에서 점수: ${highScore.toFixed(2)}`);
+if (lowScore <= highScore) {
+  console.error(`FAIL: 부족도 가중 안 됨 (low ≤ high)`); process.exit(1);
+}
+console.log(`  ✓ instant 부족도 가중 정상`);
+
 console.log("\n✓ reward_system smoke test passed");
