@@ -23,6 +23,8 @@ import {
   decideChinaAxis,
   decideTaiwanFocus
 } from "./ai_decisions.js";
+import { TURNS_PER_DAY, dayNumberForTurn, isDayEndTurn, buildDayReport } from "./day_cycle.js";
+import { drawRewards, applyReward, chooseRewardForSim } from "./reward_system.js";
 
 const dataDir = new URL("../data/", import.meta.url);
 const provinces = JSON.parse(fs.readFileSync(new URL("provinces.json", dataDir), "utf8"));
@@ -40,6 +42,20 @@ const RUNS = Number(args.runs || 50);
 const BASE_SEED = Number(args.seed || 42);
 const DETAIL = Boolean(args.detail);
 const PRINT_CURVES = Boolean(args.curves);
+
+// v0.4.0-c2-z-lite: 보상 자동 선택 옵션
+//   --rewardSide=none (기본): 보상 미적용, 기존 회귀 보존
+//   --rewardSide=taiwan: 대만만 매 DAY 보상 선택
+//   --rewardSide=china: 중국만 매 DAY 보상 선택
+//   --rewardSide=both: 양쪽 다 매 DAY 각각 1개씩 선택
+const REWARD_SIDE = String(args.rewardSide || "none");
+if (!["none", "taiwan", "china", "both"].includes(REWARD_SIDE)) {
+  console.error(`Invalid --rewardSide=${REWARD_SIDE}. Use none|taiwan|china|both`);
+  process.exit(1);
+}
+
+const rewardsFile = JSON.parse(fs.readFileSync(new URL("rewards.json", dataDir), "utf8"));
+const rewardsAll = rewardsFile.rewards;
 
 const origRandom = Math.random;
 
@@ -120,10 +136,41 @@ function runSingle(seed, { collectCurve = false } = {}) {
   });
   initializeDecks(state, cardsChina, cardsTaiwan);
 
+  const rewardLog = []; // v0.4.0-c2-z-lite: 보상 선택 기록
   const curve = [];
   while (!state.outcome && state.turn <= GAME_RULES.totalTurns) {
+    const turnBefore = state.turn;
     const decision = buildDecision(state);
     runTurn(state, decision, indices);
+
+    // v0.4.0-c2-z-lite: DAY 종료 턴 직후 보상 적용
+    // turnBefore가 DAY 끝(4,8,12,...)이었고, outcome 없이 계속 진행 중일 때
+    if (REWARD_SIDE !== "none" && !state.outcome && isDayEndTurn(turnBefore)) {
+      const dayNumber = dayNumberForTurn(turnBefore);
+      const dayReport = buildDayReport(state, dayNumber, events);
+      const sides = REWARD_SIDE === "both" ? ["taiwan", "china"] : [REWARD_SIDE];
+      for (const side of sides) {
+        const candidates = drawRewards(rewardsAll, side, state, dayReport, 3);
+        if (!candidates.length) continue;
+        const choice = chooseRewardForSim(candidates, state, dayReport, side, dayNumber, {
+          totalTurns: GAME_RULES.totalTurns, turnsPerDay: TURNS_PER_DAY
+        });
+        if (!choice) continue;
+        const applyResult = applyReward(state, choice.reward);
+        rewardLog.push({
+          dayNumber,
+          turn: turnBefore,
+          side,
+          rewardId: choice.reward.id,
+          rewardName: choice.reward.name,
+          applyTiming: choice.reward.applyTiming,
+          score: Number(choice.score.toFixed(2)),
+          candidates: candidates.map(c => c.id),
+          applied: applyResult?.applied || "unknown"
+        });
+      }
+    }
+
     if (collectCurve) {
       curve.push({
         turnEnded: state.outcome ? state.turn : state.turn - 1,
@@ -161,7 +208,9 @@ function runSingle(seed, { collectCurve = false } = {}) {
     combatSuccess: combatResults.filter((r) => r.success).length,
     combatFailure: combatResults.filter((r) => !r.success).length,
     triggeredEvents,
-    curve
+    curve,
+    rewardLog,
+    persistentRewardCount: (state.persistent?.rewards || []).length
   };
 }
 
@@ -255,9 +304,46 @@ if (!Object.keys(summary.eventCounts).length) {
   }
 }
 
+// v0.4.0-c2-z-lite: [Rewards] 섹션
+if (REWARD_SIDE !== "none") {
+  const allRewards = results.flatMap(r => r.rewardLog);
+  const totalSelected = allRewards.length;
+  const taiwanSelected = allRewards.filter(r => r.side === "taiwan").length;
+  const chinaSelected = allRewards.filter(r => r.side === "china").length;
+  const rewardCounts = {};
+  for (const r of allRewards) {
+    const key = `${r.side}:${r.rewardName}`;
+    rewardCounts[key] = (rewardCounts[key] || 0) + 1;
+  }
+  const topRewards = Object.entries(rewardCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const avgPersistTaiwan = avg(results.map(r => {
+    const tw = (r.rewardLog || []).filter(x => x.side === "taiwan" && x.applyTiming === "persistent").length;
+    return tw;
+  }));
+  const avgPersistChina = avg(results.map(r => {
+    const cn = (r.rewardLog || []).filter(x => x.side === "china" && x.applyTiming === "persistent").length;
+    return cn;
+  }));
+
+  console.log(`\n[Rewards] rewardSide=${REWARD_SIDE}`);
+  console.log(`  selected total=${totalSelected}  taiwan=${taiwanSelected}  china=${chinaSelected}`);
+  console.log(`  persistent owned avg:  taiwan ${avgPersistTaiwan.toFixed(2)}  china ${avgPersistChina.toFixed(2)}`);
+  console.log(`  top rewards:`);
+  for (const [name, count] of topRewards) {
+    console.log(`    ${name.padEnd(42)} ${String(count).padStart(4)}`);
+  }
+}
+
 if (DETAIL) {
   const sample = results[0];
   console.log(`\n[Sample run seed=${sample.seed}] outcome=${sample.outcome} finalTurn=${sample.finalTurn}`);
+  // v0.4.0-c2-z-lite: detail 모드에서 DAY 보상 선택 표시
+  if (sample.rewardLog?.length) {
+    console.log(`  [Reward selections]`);
+    for (const r of sample.rewardLog) {
+      console.log(`    DAY ${r.dayNumber} (T${r.turn}) reward=${r.side}:${r.rewardName} score=${r.score} applied=${r.applied}`);
+    }
+  }
   for (const row of sample.curve) {
     const eventText = row.events.length ? ` events=${row.events.join(",")}` : "";
     const combatText = row.combat.length ? ` combat=${row.combat.map((c) => `${c.sourceId}:${c.success ? "S" : "F"}@${c.targetId}`).join("|")}` : "";

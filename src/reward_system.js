@@ -248,3 +248,148 @@ export function computePersistentDefenseBonus(state, provinceId) {
   // 같은 지역 누적 캡: 최대 +2
   return Math.min(2, total);
 }
+
+// =====================================================================
+// v0.4.0-c2-z-lite: 시뮬용 보상 효용 점수
+// ---------------------------------------------------------------------
+// 정책 (사용자 명세 그대로):
+//   - base 10
+//   - instant: 회복량 × 부족도. clamp로 날아가면 거의 0.
+//   - add_card: +12 + 약간의 손패 상황 보정
+//   - perTurnGain: + 남은 DAY 수 × 턴당 총효과 × 1.5
+//   - defenseValueBonus: 위협받는 지역이면 큰 점수, 평온하면 작음. +2 캡 초과분 0.
+//
+// 동점이면 candidate 순서 유지 → drawRewards 출력 순서가 결정성을 줌.
+// =====================================================================
+
+const TOTAL_TURNS_DEFAULT = 30;
+const TURNS_PER_DAY_DEFAULT = 4;
+
+export function scoreRewardUtility(reward, state, dayReport, side, dayNumber, opts = {}) {
+  const totalTurns = opts.totalTurns || TOTAL_TURNS_DEFAULT;
+  const turnsPerDay = opts.turnsPerDay || TURNS_PER_DAY_DEFAULT;
+  const currentTurn = state.turn || (dayNumber * turnsPerDay);
+  const turnsLeft = Math.max(0, totalTurns - currentTurn);
+  const daysLeft = Math.max(0, Math.ceil(turnsLeft / turnsPerDay));
+
+  let score = 10;
+
+  if (reward.applyTiming === "instant") {
+    score += scoreInstant(reward, state);
+  } else if (reward.applyTiming === "add_card") {
+    score += scoreAddCard(reward, state, side);
+  } else if (reward.applyTiming === "persistent") {
+    if (reward.effects?.perTurnGain) {
+      score += scorePerTurnGain(reward, state, turnsLeft);
+    } else if (reward.effects?.defenseValueBonus) {
+      score += scoreDefenseValueBonus(reward, state, dayReport);
+    }
+  }
+
+  return score;
+}
+
+// instant: 회복량 × 부족도. 100인 게이지에 회복 주면 0점.
+function scoreInstant(reward, state) {
+  let s = 0;
+  const gauges = state.gauges || {};
+  for (const [key, value] of Object.entries(reward.effects || {})) {
+    if (typeof value !== "number") continue;
+    const cur = gauges[key] ?? 50;
+    // 부족도: 100에서 멀수록 효용 ↑ (양수 회복 기준)
+    if (value > 0) {
+      // 회복 보상: 현재 게이지 낮을수록 가치 ↑
+      const deficiency = Math.max(0, (100 - cur) / 100); // 0~1
+      // 실제 회복 가능량 = min(value, 100-cur)
+      const effectiveGain = Math.min(value, 100 - cur);
+      s += effectiveGain * (0.5 + deficiency * 1.5);
+    } else if (value < 0) {
+      // 감소 보상 (예: 중국 정치압박 -8): 현재 값 높을수록 가치 ↑
+      const excess = Math.max(0, cur / 100); // 0~1
+      const effectiveReduction = Math.min(-value, cur);
+      s += effectiveReduction * (0.5 + excess * 1.5);
+    }
+  }
+  return s;
+}
+
+// add_card: 항상 좋음. 손패 가득 차 있으면 약간 감점 (덱 맨 위 삽입 후 손패 한도 충돌 가능)
+function scoreAddCard(reward, state, side) {
+  let s = 12;
+  const hand = state.decks?.[side]?.hand?.length ?? 0;
+  if (hand >= 5) s -= 2;
+  return s;
+}
+
+// perTurnGain: 남은 턴 수 × 턴당 총효과 × 1.5
+function scorePerTurnGain(reward, state, turnsLeft) {
+  const perTurn = reward.effects?.perTurnGain || {};
+  let totalPerTurn = 0;
+  for (const [key, value] of Object.entries(perTurn)) {
+    if (typeof value !== "number") continue;
+    // 게이지가 이미 100에 가까우면 clamp로 잘릴 거 감안
+    const cur = state.gauges?.[key] ?? 50;
+    const cap = 100;
+    const headroom = Math.max(0, cap - cur);
+    // headroom / turnsLeft 비교: 어차피 캡 발동되면 효용 감소
+    const effectivePerTurn = Math.min(value, headroom / Math.max(1, turnsLeft));
+    totalPerTurn += effectivePerTurn;
+  }
+  return turnsLeft * totalPerTurn * 1.5;
+}
+
+// defenseValueBonus: 해당 지역들이 위협받는 정도
+//   - 이번 DAY 손실/압박: +25
+//   - 수도권 또는 상륙 진척 지역: +10
+//   - 평온: +3 (안전 투자)
+// + 2 캡 초과분 0 (이미 다른 보상이 같은 지역에 있으면 추가 효용 작음)
+function scoreDefenseValueBonus(reward, state, dayReport) {
+  const def = reward.effects?.defenseValueBonus;
+  if (!def) return 0;
+  const regions = def.regions || [];
+  const amount = Math.min(1, Math.max(0, def.amount || 0));
+  if (amount === 0) return 0;
+
+  let s = 0;
+  for (const provId of regions) {
+    // 이미 받은 보상의 영향 — +2 캡 초과분이면 효용 0
+    const existing = computePersistentDefenseBonus(state, provId);
+    if (existing >= 2) continue; // 캡 초과
+    // 캡 가까울수록 적게 인정
+    const headroom = 2 - existing;
+    const factor = Math.min(1, headroom);
+
+    // 위협도 평가
+    const province = state.provinces?.[provId];
+    let threat = 3; // 평온 기본
+    if (dayReport?.occupationChanges?.some(o => o.provinceId === provId && o.isLoss)) {
+      threat = 25;
+    } else if (province?.landingStage && province.landingStage !== "none") {
+      threat = 18; // 이미 상륙 진행 중
+    } else if (["taipei", "keelung", "taoyuan"].includes(provId)) {
+      threat = 10; // 수도권 가중치
+    } else if (state.persistent?.capitalPressureTurns >= 1
+              && ["taipei", "keelung", "taoyuan"].includes(provId)) {
+      threat = 20;
+    }
+    s += threat * factor;
+  }
+  return s;
+}
+
+// 시뮬용 자동 선택: 효용 점수 최고인 1개 (동점이면 candidates 순서 유지)
+export function chooseRewardForSim(candidates, state, dayReport, side, dayNumber, opts = {}) {
+  if (!candidates?.length) return null;
+  let best = null;
+  let bestScore = -Infinity;
+  let bestIdx = Infinity;
+  candidates.forEach((reward, idx) => {
+    const score = scoreRewardUtility(reward, state, dayReport, side, dayNumber, opts);
+    if (score > bestScore || (score === bestScore && idx < bestIdx)) {
+      best = reward;
+      bestScore = score;
+      bestIdx = idx;
+    }
+  });
+  return { reward: best, score: bestScore };
+}
