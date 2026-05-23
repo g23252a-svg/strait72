@@ -53,8 +53,14 @@ export function drawCards(state, side, count) {
   for (let i = 0; i < count; i++) {
     if (d.deck.length === 0) {
       if (d.discard.length === 0) break; // 완전 소진 → 더 못 뽑음
+      // v0.3.8d: 셔플 복귀 시 사용자에게 알림
+      const reshuffled = d.discard.length;
       d.deck = shuffle(d.discard);
       d.discard = [];
+      if (state.thisTurn?.operationLog) {
+        const sideName = side === "china" ? "중국" : "대만";
+        state.thisTurn.operationLog.push(`${sideName} 덱 소진: 버림더미 ${reshuffled}장 셔플 복귀`);
+      }
     }
     d.hand.push(d.deck.shift());
     drawn++;

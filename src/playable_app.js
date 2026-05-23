@@ -33,7 +33,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.3.8c";
+const EXPECTED_BUILD = "v0.3.8d";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -533,7 +533,9 @@ function renderTurnBlock(turn, summaries, isCurrent) {
   `;
 
   // 작전 라인 분류: 핵심(성공/실패) vs 일반
-  const opsLines = (s.operations || []).map(line => {
+  // v0.3.8d: "보류: 유효한 지역 타깃 없음" 다중 라인을 1줄 요약으로 묶음
+  const transformedOps = transformOperationsForDisplay(s.operations || []);
+  const opsLines = transformedOps.map(line => {
     const klass = classifyOperationLine(line);
     return `<p class="log-op ${klass}">${escapeHtml(line)}</p>`;
   }).join("");
@@ -555,6 +557,8 @@ function renderTurnBlock(turn, summaries, isCurrent) {
 }
 
 function classifyOperationLine(line) {
+  if (line.includes("작전 재조정")) return "warn";
+  if (line.includes("덱 소진")) return "info";
   if (line.includes("성공:")) return "ok";
   if (line.includes("실패:")) return "danger";
   if (line.includes("카운터플레이")) return "warn";
@@ -563,6 +567,30 @@ function classifyOperationLine(line) {
   if (line.includes("상륙 후퇴")) return "ok";
   if (line.includes("주공축 발동")) return "axis";
   return "";
+}
+
+/**
+ * v0.3.8d: 사용자 로그를 더 읽기 좋게 변환.
+ * - "X 보류: 유효한 지역 타깃 없음" 다중 라인을 → "중국군, 작전 재조정 중 (X, Y)" 1줄로 묶음.
+ * - 원본 라인 자체는 state.log에 그대로 남아 있어 디버그/시뮬에는 영향 없음.
+ */
+function transformOperationsForDisplay(ops) {
+  const out = [];
+  const reserved = [];
+  for (const line of ops) {
+    if (line.includes("보류: 유효한 지역 타깃 없음")) {
+      // "<작전명> 보류: ..." → 작전명만 추출
+      const match = line.match(/^(.+?)\s+보류:/);
+      if (match) reserved.push(match[1]);
+      continue;
+    }
+    out.push(line);
+  }
+  if (reserved.length) {
+    const uniq = [...new Set(reserved)];
+    out.push(`중국군, 작전 재조정 중 (${uniq.join(", ")})`);
+  }
+  return out;
 }
 
 function computeGaugeDeltas(before, after) {
