@@ -67,9 +67,11 @@ if (!headerPattern.test(indexHtml)) {
 }
 console.log(`  ✓ 헤더 span ${BUILD_TAG} 포함`);
 
-// 6. cache buster ?v=... — BUILD_TAG에서 v0./점/하이픈 제거한 형태
-//   "v0.4.0-c2-b2.1" → "040c2b21" 같은 형태로 줄여서 ?v= 안에 들어감
-//   여기서는 그냥 BUILD_TAG에서 점만 제거하고 짧은 형태가 있는지 검증
+// 6. cache buster ?v=... — BUILD_TAG에서 'v', '.', '-' 제거한 형태
+//   "v0.4.0-c2-b2.1" → "040c2b21"
+//   cache buster prefix (하이픈 앞부분)이 bareTag와 정확히 일치해야 함.
+//   불일치 시 hard fail — 이전에 c2-b1.2에서 EXPECTED_BUILD 누락이 빨간 배너 +
+//   init 불가를 만들었기 때문에 동일 카테고리 실수는 무조건 차단.
 const bareTag = BUILD_TAG.replace(/^v/, "").replace(/[.-]/g, "");  // e.g. "040c2b21"
 const cacheBusterPattern = /playable_app\.js\?v=([^"]+)"/;
 const cacheMatch = indexHtml.match(cacheBusterPattern);
@@ -77,16 +79,10 @@ if (!cacheMatch) {
   fail(`index.html에서 cache buster ?v= 를 찾지 못함`);
 }
 const cacheVal = cacheMatch[1];
-// cache buster 값에 "040c2b21" 같은 bareTag 포함 또는 BUILD_TAG 부분 일치
 const cacheBareTag = cacheVal.split("-")[0]; // e.g. "040c2b21" from "040c2b21-20260523"
-if (!cacheVal.startsWith("040") || !cacheBareTag.includes(bareTag.slice(0, 8))) {
-  // bareTag 일부만 매칭해도 OK (예: "040c2b21" 길이 짧으면 전체 매칭)
-  // 더 엄격: BUILD_TAG가 cache buster의 prefix 부분에 반영됐는지
-  console.warn(`  ⚠ cache buster "${cacheVal}"가 BUILD_TAG "${BUILD_TAG}" (bareTag: "${bareTag}")와 정확히 매칭 안 됨`);
-  console.warn(`     bareTag 일부라도 cache buster prefix에 있는지 확인 필요`);
-  // 경고만, fail은 아님 (cache buster 명명 규칙이 강제되진 않음)
-} else {
-  console.log(`  ✓ cache buster "${cacheVal}" BUILD_TAG 반영`);
+if (cacheBareTag !== bareTag) {
+  fail(`cache buster "${cacheVal}" prefix "${cacheBareTag}" ≠ BUILD_TAG bareTag "${bareTag}" (BUILD_TAG: ${BUILD_TAG})`);
 }
+console.log(`  ✓ cache buster "${cacheVal}" prefix "${cacheBareTag}" === bareTag "${bareTag}"`);
 
 console.log(`\n✓ build self-check passed (${BUILD_TAG})`);
