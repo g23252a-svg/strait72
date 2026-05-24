@@ -64,7 +64,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.4.2-b1.1";
+const EXPECTED_BUILD = "v0.4.2-b1.2";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {

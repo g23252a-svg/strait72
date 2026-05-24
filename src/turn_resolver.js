@@ -228,14 +228,33 @@ const EFFECT_HANDLERS = {
   },
   defenseValueBonus: (s, v, ctx) => {
     const targets = ctx.resolvedTargets || [];
+    let applied = false;
     for (const provId of targets) {
       const prov = s.provinces[provId];
       if (!prov) continue;
+      // v0.4.2-b1.2: sea_zone은 방어 진지/기동 예비대 대상이 아님
+      if (prov.type === "sea_zone") {
+        // skip + 로그 한 번
+        if (!ctx._seaZoneDefenseWarned) {
+          s.thisTurn.operationLog.push(`방어 보강 미적용: ${prov.name} (해역에는 방어 진지를 배치하지 않음)`);
+          ctx._seaZoneDefenseWarned = true;
+        }
+        continue;
+      }
       // 방어 버프는 1턴성 임시 보너스로 처리한다.
-      // 이전 버전은 defenseValueModifier에 영구 누적되어 가오슝 방어 30~40대가 되는 문제가 있었다.
       prov.defenseValueModifier = (prov.defenseValueModifier || 0) + v;
       prov.temporaryDefenseBonus = (prov.temporaryDefenseBonus || 0) + v;
       s.thisTurn.operationLog.push(`방어력 보강: ${prov.name} +${v}`);
+      applied = true;
+    }
+    // 모든 타겟이 sea_zone이라 한 번도 적용 안 됨 → 가장 위험한 occupiable로 재지정
+    if (!applied && targets.length > 0) {
+      const fallback = findMostThreatenedOccupiable(s);
+      if (fallback) {
+        fallback.defenseValueModifier = (fallback.defenseValueModifier || 0) + v;
+        fallback.temporaryDefenseBonus = (fallback.temporaryDefenseBonus || 0) + v;
+        s.thisTurn.operationLog.push(`방어력 보강 재지정: ${fallback.name} +${v}`);
+      }
     }
   },
   landingProgressBonusOnSuccess: (s, v, ctx) => {
@@ -462,16 +481,23 @@ export function phaseCardPlacement(state, decisions, cardIndex) {
   const placed = { china: [], taiwan: [] };
   for (const side of ["china", "taiwan"]) {
     const wantPlay = decisions[`${side}Cards`] || [];
+    const seenIds = new Set();
     for (const cardId of wantPlay) {
       const card = cardIndex.get(cardId);
       if (!card) {
         state.log.push({ turn: state.turn, level: "warn", msg: `unknown card: ${cardId}` });
         continue;
       }
+      // v0.4.2-b1.2: 같은 card id 한 턴 1번만 (allowDuplicate:true이면 예외)
+      if (seenIds.has(cardId) && !card.allowDuplicate) {
+        state.log.push({ turn: state.turn, level: "info", msg: `duplicate card blocked: ${cardId}` });
+        continue;
+      }
       if (!payCost(state, side, card.cost)) {
         state.log.push({ turn: state.turn, level: "warn", msg: `cost failed: ${cardId}` });
         continue;
       }
+      seenIds.add(cardId);
       placed[side].push(cardId);
     }
   }
@@ -981,6 +1007,28 @@ function halveDamageEffects(effects) {
     }
   }
   return out;
+}
+
+// v0.4.2-b1.2: 방어 버프가 sea_zone에 시도되면 가장 위험한 occupiable로 재지정
+function findMostThreatenedOccupiable(state) {
+  const provs = Object.values(state.provinces || {});
+  let best = null, bestThreat = -1;
+  for (const p of provs) {
+    if (p.type === "sea_zone") continue;
+    // 위험도: landingStage 진척 + controlStage 압박
+    let t = 0;
+    const stages = ["none", "deception", "amphibious_assault", "beachhead", "inland_expansion", "consolidated"];
+    const idx = stages.indexOf(p.landingStage || "none");
+    if (idx > 0) t += idx * 3;
+    if (p.controlStage === "contested") t += 2;
+    if (p.controlStage === "beachhead_established") t += 5;
+    if (p.controlStage === "china_control") t += 8;
+    // 수도/항만은 가중치
+    if (p.type === "capital") t += 4;
+    if (p.type === "major_port" || p.type === "port") t += 2;
+    if (t > bestThreat) { bestThreat = t; best = p; }
+  }
+  return best;
 }
 
 // ---------------------------------------------------------------------

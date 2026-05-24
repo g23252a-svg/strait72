@@ -316,9 +316,16 @@ export function suggestChinaAxis(state, axes) {
     // (hard-block은 안 하고 점수만 -30 추가 → score < 0 보장)
     if (scores.south_landing !== undefined) scores.south_landing -= 30;
     if (scores.north_pressure !== undefined) scores.north_pressure -= 25;
-    // 비군사 추가 보너스
-    if (scores.naval_blockade !== undefined) scores.naval_blockade += 2;
-    if (scores.diplomatic_pressure !== undefined) scores.diplomatic_pressure += 2;
+    // v0.4.2-b1.2: supply=0이면 봉쇄도 사실상 굴리기 어려움 → 소폭 하향
+    // playtest: T70-T84 '해상 봉쇄 실패' 반복. 봉쇄는 보급 자원이 필요.
+    if ((g.chinaSupply || 0) <= 0) {
+      if (scores.naval_blockade !== undefined) scores.naval_blockade -= 5;
+    } else {
+      if (scores.naval_blockade !== undefined) scores.naval_blockade += 2;
+    }
+    // 외교/정보전이 진짜 우위 — dipl/info 더 키움
+    if (scores.diplomatic_pressure !== undefined) scores.diplomatic_pressure += 4;
+    if (scores.information_warfare !== undefined) scores.information_warfare += 3;
   }
 
   let best = null, bestScore = -Infinity;
