@@ -5,15 +5,18 @@
 // 엔진 상태(state)를 받아 중앙 대만 지도, 통제 단계, 상륙 단계, 선택 지역을 그린다.
 // =====================================================================
 
+// v0.5-a: 전략맵 이미지 (taiwan_strategic_map.png) 기준 정규화 좌표
+// 이미지 16:9 (1920x1080 등) 위에서 거점 픽셀 위치를 정규화한 값.
+// 화롄은 이미지에 라벨이 안 보일 수 있어 코드에서 별도로 그림.
 export const PROVINCE_LAYOUT = Object.freeze({
-  keelung:   { x: 0.66, y: 0.16, r: 34, label: "지룽" },
-  taipei:    { x: 0.58, y: 0.19, r: 40, label: "타이베이" },
-  taoyuan:   { x: 0.51, y: 0.25, r: 36, label: "타오위안" },
-  taichung:  { x: 0.45, y: 0.43, r: 39, label: "타이중" },
-  tainan:    { x: 0.43, y: 0.66, r: 36, label: "타이난" },
-  kaohsiung: { x: 0.48, y: 0.78, r: 42, label: "가오슝" },
-  hualien:   { x: 0.69, y: 0.50, r: 37, label: "화롄" },
-  strait:    { x: 0.23, y: 0.46, r: 48, label: "대만 해협" }
+  taipei:    { x: 0.595, y: 0.185, r: 40, label: "타이베이" },
+  keelung:   { x: 0.662, y: 0.230, r: 34, label: "지룽" },
+  taoyuan:   { x: 0.522, y: 0.265, r: 36, label: "타오위안" },
+  taichung:  { x: 0.482, y: 0.400, r: 39, label: "타이중" },
+  tainan:    { x: 0.422, y: 0.560, r: 36, label: "타이난" },
+  kaohsiung: { x: 0.468, y: 0.705, r: 42, label: "가오슝" },
+  hualien:   { x: 0.620, y: 0.515, r: 37, label: "화롄" },
+  strait:    { x: 0.230, y: 0.460, r: 48, label: "대만 해협" }
 });
 
 const STAGE_LABELS = Object.freeze({
@@ -57,7 +60,7 @@ export function drawGameCanvas(canvas, state, meta = {}) {
 
   drawBackground(ctx, w, h);
   drawStraitGrid(ctx, w, h);
-  drawTaiwanSilhouette(ctx, w, h);
+  drawTaiwanMapImage(ctx, w, h);  // v0.5-a: 실제 전략맵 이미지 (로드 실패 시 fallback)
   drawRoutes(ctx, w, h);
   drawOperationalMotion(ctx, w, h, state, meta);
   drawAlliedIntervention(ctx, w, h, state, meta);
@@ -66,31 +69,20 @@ export function drawGameCanvas(canvas, state, meta = {}) {
 }
 
 function drawBackground(ctx, w, h) {
+  // v0.5-a: 이미지가 cover로 들어오면 거의 가려지지만, 이미지 로딩 전 또는
+  // 비율 차이로 노출되는 영역을 위한 fallback 배경.
   const g = ctx.createLinearGradient(0, 0, w, h);
   g.addColorStop(0, "#071726");
   g.addColorStop(0.48, "#0b2238");
   g.addColorStop(1, "#030811");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
-
-  // 중국 해안 추상 영역
-  ctx.fillStyle = "rgba(166, 45, 59, 0.20)";
-  ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.lineTo(w * 0.28, 0);
-  ctx.bezierCurveTo(w * 0.22, h * 0.28, w * 0.29, h * 0.62, w * 0.22, h);
-  ctx.lineTo(0, h);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.fillStyle = "rgba(255,255,255,0.05)";
-  ctx.font = "700 32px system-ui";
-  ctx.fillText("중국 연안", 42, 72);
 }
 
 function drawStraitGrid(ctx, w, h) {
   ctx.save();
-  ctx.strokeStyle = "rgba(114, 178, 255, 0.10)";
+  // v0.5-a: 이미지 위에 격자가 너무 진하면 가독성 떨어지므로 alpha 절반
+  ctx.strokeStyle = "rgba(114, 178, 255, 0.05)";
   ctx.lineWidth = 1;
   for (let i = 0; i < 9; i++) {
     const x = w * (0.18 + i * 0.08);
@@ -121,7 +113,59 @@ function drawStraitGrid(ctx, w, h) {
   ctx.restore();
 }
 
-function drawTaiwanSilhouette(ctx, w, h) {
+// v0.5-a: 전략맵 이미지 로드 (한 번만, 모듈 캐시)
+// document 없는 환경(테스트)에선 null로 두고 fallback 실루엣을 그린다.
+let _mapImage = null;
+let _mapImageLoading = false;
+let _mapImageFailed = false;
+
+function ensureMapImageLoaded() {
+  if (_mapImage || _mapImageLoading || _mapImageFailed) return;
+  if (typeof Image === "undefined") return;  // Node 환경
+  _mapImageLoading = true;
+  const img = new Image();
+  img.onload = () => {
+    _mapImage = img;
+    _mapImageLoading = false;
+  };
+  img.onerror = () => {
+    _mapImageFailed = true;
+    _mapImageLoading = false;
+    console.warn("[v0.5-a] taiwan_strategic_map.png 로드 실패 — fallback 실루엣 사용");
+  };
+  img.src = "./assets/maps/taiwan_strategic_map.png";
+}
+
+// v0.5-a: 전략맵 이미지 그리기. 로드 안 됐으면 fallback 실루엣.
+function drawTaiwanMapImage(ctx, w, h) {
+  ensureMapImageLoaded();
+  if (_mapImage) {
+    // 이미지가 캔버스 가득 차도록 cover 방식 (object-fit: cover)
+    const imgRatio = _mapImage.width / _mapImage.height;
+    const canvasRatio = w / h;
+    let dw, dh, dx, dy;
+    if (imgRatio > canvasRatio) {
+      // 이미지가 더 넓음 — 높이 맞추고 좌우 crop
+      dh = h;
+      dw = h * imgRatio;
+      dx = (w - dw) / 2;
+      dy = 0;
+    } else {
+      // 이미지가 더 좁음 — 너비 맞추고 상하 crop
+      dw = w;
+      dh = w / imgRatio;
+      dx = 0;
+      dy = (h - dh) / 2;
+    }
+    ctx.drawImage(_mapImage, dx, dy, dw, dh);
+  } else {
+    // fallback: 기존 추상 실루엣 (이미지 로딩 중 또는 실패 시)
+    drawTaiwanSilhouetteFallback(ctx, w, h);
+  }
+}
+
+// v0.5-a: 기존 실루엣 함수 (이미지 로드 실패 시 fallback). 좌표 영향 X.
+function drawTaiwanSilhouetteFallback(ctx, w, h) {
   ctx.save();
   const cx = w * 0.56;
   const cy = h * 0.47;
