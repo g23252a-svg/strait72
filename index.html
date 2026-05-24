@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>해협의 72시간 - v0.4.3 Tutorial</title>
+  <title>해협의 72시간 - v0.4.4 Save & Resume</title>
   <style>
     :root {
       --bg: #07111f;
@@ -430,13 +430,14 @@
     <header>
       <div class="title">
         <h1>해협의 72시간</h1>
-        <span>Strait 72 · v0.4.3 Tutorial</span>
+        <span>Strait 72 · v0.4.4 Save & Resume</span>
       </div>
       <div class="turnline">
         <span class="chip"><strong id="turnCounter">TURN - / -</strong></span>
         <span class="chip" id="gameClock">D+0 00:00</span>
         <span class="chip" id="actHudChip"><span id="actHudLabel">현재 국면</span>: <strong id="chinaClock">-h</strong></span>
         <span class="chip" id="outcomeChip">진행 중</span>
+        <button id="saveBtn" class="reset-top" title="현재 게임을 저장합니다 (DAY 종료 시 자동 저장도 함)">💾 저장</button>
         <button id="resetBtn" class="reset-top">새 게임</button>
       </div>
     </header>
@@ -500,6 +501,6 @@
     </footer>
   </div>
 
-  <script type="module" src="./src/playable_app.js?v=043-20260524"></script>
+  <script type="module" src="./src/playable_app.js?v=044-20260524"></script>
 </body>
 </html>

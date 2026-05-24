@@ -21,6 +21,9 @@ import {
   TUTORIAL_STEPS
 } from "./tutorial.js";
 import {
+  saveGame, loadGame, getSaveMetadata, hasSavedGame, clearSavedGame
+} from "./save_system.js";
+import {
   chooseChinaCards as aiChooseChinaCards,
   chooseTaiwanCards as aiChooseTaiwanCards,
   pickSelectedProvince as aiPickSelectedProvince,
@@ -71,7 +74,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.4.3";
+const EXPECTED_BUILD = "v0.4.4";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -120,16 +123,17 @@ async function init() {
   // v0.4.0-a: 진영 선택 화면을 먼저 보여줌
   // v0.4.2-d1: missionId 옵션 추가
   // v0.4.3: tutorialMode 옵션 추가
-  showSideSelectModal((selectedSide, difficulty, scenarioId, missionId, tutorialMode) => {
+  // v0.4.4: resumePayload 옵션 추가 (저장된 state 복원)
+  showSideSelectModal((selectedSide, difficulty, scenarioId, missionId, tutorialMode, resumePayload) => {
     campaign = createCampaignState(selectedSide, difficulty, scenarioId);
-    if (missionId) {
-      campaign.missionId = missionId;
-    }
-    if (tutorialMode) {
-      campaign.tutorialMode = true;
-    }
+    if (missionId) campaign.missionId = missionId;
+    if (tutorialMode) campaign.tutorialMode = true;
     saveLastChoice(selectedSide, difficulty, scenarioId);
-    resetGame();
+    if (resumePayload) {
+      resumeGame(resumePayload);
+    } else {
+      resetGame();
+    }
     bindEvents();
     startCanvasLoop();
   });
@@ -232,10 +236,32 @@ function showSideSelectModal(onConfirm) {
     </div>
   ` : "";
 
+  // v0.4.4: 저장 데이터 있으면 이어하기 옵션
+  const saveMeta = getSaveMetadata(BUILD_TAG);
+  let resumeHtml = "";
+  if (saveMeta) {
+    const savedDate = new Date(saveMeta.savedAt);
+    const timeAgo = formatTimeAgo(savedDate);
+    const sideLabel = SIDES[saveMeta.side]?.name || saveMeta.side;
+    const scenLabel = SCENARIOS[saveMeta.scenarioId]?.name || saveMeta.scenarioId;
+    const missionLabel = saveMeta.missionId && MISSIONS[saveMeta.missionId]
+      ? ` · 미션: ${MISSIONS[saveMeta.missionId].name}` : "";
+    resumeHtml = `
+      <div class="resume-block">
+        <button id="resumeBtn" class="primary resume-btn">
+          ▶ 이어하기
+          <span>${sideLabel} · ${scenLabel}${missionLabel} · T${saveMeta.turn}/${saveMeta.totalTurns} · ${timeAgo}</span>
+        </button>
+        <button id="deleteSaveBtn" class="secondary">저장 삭제</button>
+      </div>
+    `;
+  }
+
   overlay.innerHTML = `
     <div class="side-modal">
       <h2>해협의 72시간</h2>
       <p class="subtitle">진영 / 모드 선택</p>
+      ${resumeHtml}
       ${quickStartHtml}
 
       <!-- v0.4.2-d1: 모드 탭 -->
@@ -322,6 +348,40 @@ function showSideSelectModal(onConfirm) {
         border-radius: 8px;
         font-size: 12px;
         cursor: pointer;
+      }
+      /* v0.4.4: 이어하기 블록 */
+      .side-modal .resume-block {
+        display: flex; gap: 8px;
+        margin: 0 0 16px;
+        padding: 12px;
+        background: rgba(255, 214, 107, 0.08);
+        border: 1px solid rgba(255, 214, 107, 0.4);
+        border-radius: 10px;
+      }
+      .side-modal .resume-block button.primary.resume-btn {
+        flex: 1;
+        background: #ffd66b;
+        color: #1a1d2e;
+        border: none;
+        padding: 12px 14px;
+        border-radius: 8px;
+        font-weight: 700;
+        cursor: pointer;
+        font-size: 14px;
+        text-align: left;
+        display: flex; flex-direction: column; gap: 3px;
+      }
+      .side-modal .resume-block button.primary.resume-btn span {
+        font-size: 11px; font-weight: 400; opacity: .85;
+      }
+      .side-modal .resume-block button.secondary {
+        background: transparent;
+        color: rgba(234,243,255,.55);
+        border: 1px solid rgba(255,255,255,.18);
+        padding: 8px 12px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 12px;
       }
       .side-modal .side-list {
         display: grid; gap: 10px;
@@ -576,20 +636,20 @@ function showSideSelectModal(onConfirm) {
     if (mode === "campaign") {
       if (!selectedSide) return;
       overlay.remove();
-      onConfirm(selectedSide, selectedDifficulty, selectedScenario, null);
+      onConfirm(selectedSide, selectedDifficulty, selectedScenario, null, false, null);
     } else {
       if (!selectedMission) return;
       // v0.4.3: 튜토리얼 카드 — first_72h 미션 + tutorialMode 플래그
       if (selectedMission === "__tutorial__") {
         overlay.remove();
-        onConfirm("taiwan", "normal", "short_72h", "first_72h", true);
+        onConfirm("taiwan", "normal", "short_72h", "first_72h", true, null);
         return;
       }
       const m = MISSIONS[selectedMission];
       if (!m) return;
       overlay.remove();
       // 미션은 권장 진영 + 베이스 시나리오 강제
-      onConfirm(m.recommendedSide, "normal", m.baseScenario, selectedMission, false);
+      onConfirm(m.recommendedSide, "normal", m.baseScenario, selectedMission, false, null);
     }
   });
 
@@ -597,7 +657,7 @@ function showSideSelectModal(onConfirm) {
   if (quickBtn && last) {
     quickBtn.addEventListener("click", () => {
       overlay.remove();
-      onConfirm(last.side, last.difficulty, last.scenarioId || "short_72h", null);
+      onConfirm(last.side, last.difficulty, last.scenarioId || "short_72h", null, false, null);
     });
   }
   const newBtn = overlay.querySelector("#newChoiceBtn");
@@ -606,6 +666,49 @@ function showSideSelectModal(onConfirm) {
       overlay.querySelector(".quick-start").style.display = "none";
     });
   }
+
+  // v0.4.4: 이어하기 / 저장 삭제
+  const resumeBtn = overlay.querySelector("#resumeBtn");
+  if (resumeBtn) {
+    resumeBtn.addEventListener("click", () => {
+      const payload = loadGame(BUILD_TAG);
+      if (!payload || payload.invalid) {
+        alert("저장 데이터를 불러올 수 없습니다 (" + (payload?.reason || "missing") + ")");
+        return;
+      }
+      overlay.remove();
+      onConfirm(
+        payload.campaign.selectedSide,
+        payload.campaign.difficulty,
+        payload.campaign.scenarioId,
+        payload.campaign.missionId,
+        payload.campaign.tutorialMode,
+        payload  // 6번째 인자: 복원용 payload
+      );
+    });
+  }
+  const deleteBtn = overlay.querySelector("#deleteSaveBtn");
+  if (deleteBtn) {
+    deleteBtn.addEventListener("click", () => {
+      if (!confirm("저장 데이터를 삭제할까요? 되돌릴 수 없습니다.")) return;
+      clearSavedGame();
+      const block = overlay.querySelector(".resume-block");
+      if (block) block.remove();
+    });
+  }
+}
+
+// v0.4.4: 저장 시각 표시 헬퍼
+function formatTimeAgo(date) {
+  const diffMs = Date.now() - date.getTime();
+  const sec = Math.floor(diffMs / 1000);
+  if (sec < 60) return "방금 전";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}분 전`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}시간 전`;
+  const day = Math.floor(hr / 24);
+  return `${day}일 전`;
 }
 
 function bindDom() {
@@ -613,7 +716,7 @@ function bindDom() {
     "turnCounter", "gameClock", "chinaClock", "outcomeChip", "actHudLabel",
     "chinaMeters", "taiwanMeters", "interventionMeters", "logBox",
     "chinaAxisSelect", "taiwanFocusSelect", "provinceSelect",
-    "chinaCards", "taiwanCards", "runTurnBtn", "resetBtn",
+    "chinaCards", "taiwanCards", "runTurnBtn", "resetBtn", "saveBtn",
     "suggestBtn", "autoTurnBtn", "mapCanvas"
   ]) {
     dom[id] = document.getElementById(id);
@@ -674,6 +777,38 @@ function resetGame() {
   renderCards();
   applySuggestion(false);
   render();
+}
+
+// v0.4.4: 저장된 상태로 복원 (resetGame과 평행 — state는 새로 만들지 않고 payload 그대로)
+function resumeGame(payload) {
+  state = payload.state;
+
+  // 모달 가드 리셋
+  finalModalShown = false;
+  pendingDayModal = false;
+  autoToNextDayMode = false;
+
+  // 떠 있는 모달 제거
+  const dayOv = document.getElementById("dayEndOverlay");
+  if (dayOv) dayOv.remove();
+  const finalOv = document.getElementById("finalResultOverlay");
+  if (finalOv) finalOv.remove();
+
+  selectedProvince = "keelung";
+  fillSelectors();
+  renderCampaignBadge();
+  applySideLock();
+  renderCards();
+  applySuggestion(false);
+  render();
+  // 로그에 복원 알림
+  if (Array.isArray(state.log)) {
+    state.log.push({
+      turn: state.turn,
+      level: "info",
+      msg: `▶ 이어하기 — T${state.turn}부터 재개 (저장 시각: ${new Date(payload.savedAt).toLocaleString()})`
+    });
+  }
 }
 
 // v0.4.0-a: 진영/난이도 배지를 헤더 빌드 배지 옆에 추가
@@ -787,16 +922,45 @@ function bindEvents() {
     // v0.4.0-a: 진영 선택 다시
     // v0.4.2-d1: missionId 추가
     // v0.4.3: tutorialMode 추가
-    showSideSelectModal((selectedSide, difficulty, scenarioId, missionId, tutorialMode) => {
+    // v0.4.4: resumePayload 추가
+    showSideSelectModal((selectedSide, difficulty, scenarioId, missionId, tutorialMode, resumePayload) => {
       campaign = createCampaignState(selectedSide, difficulty, scenarioId);
       if (missionId) campaign.missionId = missionId;
       if (tutorialMode) campaign.tutorialMode = true;
       saveLastChoice(selectedSide, difficulty, scenarioId);
-      resetGame();
+      if (resumePayload) {
+        resumeGame(resumePayload);
+      } else {
+        resetGame();
+      }
       dom.runTurnBtn.disabled = false;
       dom.autoTurnBtn.disabled = false;
     });
   });
+
+  // v0.4.4: 수동 저장 버튼
+  if (dom.saveBtn) {
+    dom.saveBtn.addEventListener("click", () => {
+      if (!state || state.outcome) {
+        alert("저장할 수 있는 진행 중인 게임이 없습니다.");
+        return;
+      }
+      const r = saveGame(state, campaign, BUILD_TAG, "manual");
+      if (r.ok) {
+        const sizeKb = (r.size / 1024).toFixed(1);
+        // 짧은 토스트 — 버튼 라벨 잠시 바꿈
+        const origText = dom.saveBtn.textContent;
+        dom.saveBtn.textContent = `✓ 저장됨 (${sizeKb}KB)`;
+        dom.saveBtn.disabled = true;
+        setTimeout(() => {
+          dom.saveBtn.textContent = origText;
+          dom.saveBtn.disabled = false;
+        }, 1500);
+      } else {
+        alert("저장 실패: " + r.error);
+      }
+    });
+  }
   dom.suggestBtn.addEventListener("click", () => {
     applySuggestion(true);
     render();
@@ -1105,6 +1269,16 @@ function runManualTurn() {
     showDayEndModal(dayN);
     // v0.4.3: DAY 모달이 떴음을 튜토리얼에 알림
     if (isTutorialActive()) advanceTutorial("day_end");
+    // v0.4.4: DAY 종료 시 자동 저장
+    const r = saveGame(state, campaign, BUILD_TAG, "auto");
+    if (!r.ok) {
+      console.warn("[save] auto save failed:", r.error);
+    }
+  }
+
+  // v0.4.4: outcome 발생 시 저장 삭제 (게임 종료 → 이어할 게 없음)
+  if (state.outcome) {
+    clearSavedGame();
   }
 
   // v0.4.3: 매 턴 실행 후 튜토리얼에 알림
@@ -2212,12 +2386,16 @@ function showFinalResultModal() {
   // 진영 선택으로
   overlay.querySelector("#finalRestartNewBtn").addEventListener("click", () => {
     overlay.remove();
-    showSideSelectModal((selectedSide, difficulty, scenarioId, missionId, tutorialMode) => {
+    showSideSelectModal((selectedSide, difficulty, scenarioId, missionId, tutorialMode, resumePayload) => {
       campaign = createCampaignState(selectedSide, difficulty, scenarioId);
       if (missionId) campaign.missionId = missionId;
       if (tutorialMode) campaign.tutorialMode = true;
       saveLastChoice(selectedSide, difficulty, scenarioId);
-      resetGame();
+      if (resumePayload) {
+        resumeGame(resumePayload);
+      } else {
+        resetGame();
+      }
       dom.runTurnBtn.disabled = false;
       dom.autoTurnBtn.disabled = false;
     });
