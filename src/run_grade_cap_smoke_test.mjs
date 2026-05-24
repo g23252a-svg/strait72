@@ -264,9 +264,14 @@ console.log("\n13. 타이베이 beachhead cap reasons");
 const taipeiBh = buildCapReasons(mkState({
   provinces: mkProvs({ taipei: { stage: "contested", landing: "beachhead" } })
 }), "taiwan");
-const taipeiReason = taipeiBh.find(r => r.label.includes("해안교두보"));
+const taipeiReason = taipeiBh.find(r => r.label.includes("수도권 교두보"));
 if (!taipeiReason) {
-  console.error(`FAIL: 타이베이 beachhead 사유 없음`); process.exit(1);
+  console.error(`FAIL: 타이베이 수도권 교두보 사유 없음 (옛 '해안교두보' 잔재 확인)`); process.exit(1);
+}
+// d4.2: 옛 라벨이 남아있으면 안 됨
+if (taipeiBh.some(r => r.label.includes("해안교두보") || r.label.includes("해안 돌파"))) {
+  console.error(`FAIL: 옛 라벨 '해안교두보/해안 돌파' 잔재. labels: ${taipeiBh.map(r=>r.label).join(",")}`);
+  process.exit(1);
 }
 console.log(`  ✓ 타이베이 beachhead: "${taipeiReason.label}: ${taipeiReason.detail}"`);
 
@@ -322,5 +327,51 @@ if (integReport.taiwan.capReasons.length === 0) {
   console.error(`FAIL: capReasons 비어있음 (cap 걸린 케이스)`); process.exit(1);
 }
 console.log(`  ✓ taiwan.capReasons ${integReport.taiwan.capReasons.length}개 통합`);
+
+// =====================================================================
+// d4.2: 문구 polish 회귀 방지
+// =====================================================================
+console.log("\n[d4.2 문구 검증]");
+
+// 17. components 라벨: 옛 '해안교두보' / '해안 돌파' 사라짐, 새 '수도권 교두보' / '수도권 돌파'
+console.log("\n17. components 라벨 갱신");
+const bhComps = calculateFinalScore(mkState({
+  provinces: mkProvs({ taipei: { stage: "contested", landing: "beachhead" } })
+}), "taiwan").components;
+const breachComps = calculateFinalScore(mkState({
+  provinces: mkProvs({ taipei: { stage: "contested", landing: "coastal_breach" } })
+}), "taiwan").components;
+
+const oldLabels = ["타이베이 해안교두보 점령", "타이베이 해안 돌파"];
+for (const oldL of oldLabels) {
+  if (bhComps.some(c => c.label === oldL) || breachComps.some(c => c.label === oldL)) {
+    console.error(`FAIL: 옛 라벨 "${oldL}" 잔재`); process.exit(1);
+  }
+}
+const bhFound = bhComps.find(c => c.label === "타이베이 수도권 교두보");
+const breachFound = breachComps.find(c => c.label === "타이베이 수도권 돌파");
+if (!bhFound) { console.error(`FAIL: '타이베이 수도권 교두보' 라벨 없음`); process.exit(1); }
+if (!breachFound) { console.error(`FAIL: '타이베이 수도권 돌파' 라벨 없음`); process.exit(1); }
+console.log(`  ✓ beachhead → "${bhFound.label}" (${bhFound.delta})`);
+console.log(`  ✓ coastal_breach → "${breachFound.label}" (${breachFound.delta})`);
+
+// 18. 해설 문구: "동맹 개입 직전까지" 옛 표현 없음
+console.log("\n18. 해설 '동맹 개입 이후까지' 표현");
+const bMsg = generateFinalInterpretation(
+  "taiwan_survival_win", 86, "taiwan",
+  mkState({
+    provinces: mkProvs({
+      taipei: { stage: "contested", landing: "beachhead" },
+      kaohsiung: "china_control", tainan: "china_control", taichung: "china_control"
+    })
+  }), "B"
+);
+if (bMsg.includes("직전까지")) {
+  console.error(`FAIL: '직전까지' 잔재: "${bMsg}"`); process.exit(1);
+}
+if (!bMsg.includes("이후까지")) {
+  console.error(`FAIL: '이후까지' 누락: "${bMsg}"`); process.exit(1);
+}
+console.log(`  ✓ B 등급 해설: "${bMsg.slice(0, 60)}…"`);
 
 console.log("\n✓ grade cap smoke test passed");

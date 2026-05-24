@@ -95,10 +95,10 @@ export function calculateFinalScore(state, side) {
     let capitalLabel = null;
     if (territorial.taipeiRisk === "beachhead") {
       capitalPenalty = -18;
-      capitalLabel = "타이베이 해안교두보 점령";
+      capitalLabel = "타이베이 수도권 교두보";
     } else if (territorial.taipeiRisk === "breach") {
       capitalPenalty = -12;
-      capitalLabel = "타이베이 해안 돌파";
+      capitalLabel = "타이베이 수도권 돌파";
     } else if (territorial.taipeiRisk === "contested") {
       capitalPenalty = -8;
       capitalLabel = "타이베이 전투 중";
@@ -244,7 +244,7 @@ export function generateFinalInterpretation(outcome, score, side, state = null, 
     }
     if (grade === "B") {
       if (t.capitalAtRisk) {
-        return `대만은 ${t.lostCount}곳의 영토를 상실하고 수도권까지 압박받았지만, 정부 기능을 유지하며 동맹 개입 직전까지 버텨냈습니다. 다음 국면은 매우 불안정합니다.`;
+        return `대만은 ${t.lostCount}곳의 영토를 상실하고 수도권까지 압박받았지만, 정부 기능을 유지하며 동맹 개입 이후까지 버텨냈습니다. 다음 국면은 매우 불안정합니다.`;
       }
       return `대만은 남부 거점들을 상실했지만, 타이베이 정부 기능과 지휘 체계를 끝까지 유지하며 동맹 개입 이후 생존에 성공했습니다.`;
     }
@@ -488,9 +488,9 @@ export function buildCapReasons(state, side) {
   if (t.capitalLost) {
     reasons.push({ label: "타이베이 함락", detail: "수도가 china_control" });
   } else if (t.taipeiRisk === "beachhead") {
-    reasons.push({ label: "타이베이 해안교두보", detail: "수도권 beachhead 단계" });
+    reasons.push({ label: "타이베이 수도권 교두보", detail: "수도권 beachhead 단계" });
   } else if (t.taipeiRisk === "breach") {
-    reasons.push({ label: "타이베이 해안 돌파", detail: "수도권 coastal breach 단계" });
+    reasons.push({ label: "타이베이 수도권 돌파", detail: "수도권 coastal breach 단계" });
   } else if (t.taipeiRisk === "contested") {
     reasons.push({ label: "타이베이 교전 중", detail: "수도가 contested 상태" });
   }
