@@ -458,6 +458,65 @@ export function gradeWithCap(score, cap) {
 }
 
 // =====================================================================
+// v0.4.0-d4.1: cap 사유 리스트 생성 — UI에서 "왜 B 상한인지" 명확히 표시
+// ---------------------------------------------------------------------
+// 반환: [{label, detail}] 형태 (없으면 빈 배열)
+//   label: 짧은 카테고리 (예: "점령지 상실")
+//   detail: 구체 정보 (예: "지룽, 타이중, 가오슝")
+// =====================================================================
+export function buildCapReasons(state, side) {
+  if (side !== "taiwan") return []; // 일단 대만 진영만
+  const t = analyzeTerritorialState(state);
+  const g = state.gauges || {};
+  const outcome = state.outcome;
+  const reasons = [];
+
+  // 영토 상실 (≥2일 때만 명시)
+  if (t.lostCount >= 3) {
+    reasons.push({
+      label: `점령지 ${t.lostCount}곳 상실`,
+      detail: t.lostNames.join(", ")
+    });
+  } else if (t.lostCount === 2) {
+    reasons.push({
+      label: "점령지 2곳 상실",
+      detail: t.lostNames.join(", ")
+    });
+  }
+
+  // 수도권 상태
+  if (t.capitalLost) {
+    reasons.push({ label: "타이베이 함락", detail: "수도가 china_control" });
+  } else if (t.taipeiRisk === "beachhead") {
+    reasons.push({ label: "타이베이 해안교두보", detail: "수도권 beachhead 단계" });
+  } else if (t.taipeiRisk === "breach") {
+    reasons.push({ label: "타이베이 해안 돌파", detail: "수도권 coastal breach 단계" });
+  } else if (t.taipeiRisk === "contested") {
+    reasons.push({ label: "타이베이 교전 중", detail: "수도가 contested 상태" });
+  }
+
+  // 지룽 상태 (수도 인접)
+  if (t.keelungStage === "china_control") {
+    reasons.push({ label: "지룽 상실", detail: "수도 인접 항만 함락" });
+  } else if (t.keelungStage === "contested" || (state.provinces?.keelung?.landingStage && state.provinces.keelung.landingStage !== "none")) {
+    reasons.push({ label: "지룽 교전 중", detail: "수도 인접 항만 압박" });
+  }
+
+  // S 하드 조건 미충족 (생존 승리 시 + 다른 큰 cap 사유 없을 때)
+  if (outcome === "taiwan_survival_win" && reasons.length === 0) {
+    const missing = [];
+    if ((g.taiwanGovernment ?? 0) < 70) missing.push(`정부 기능 ${g.taiwanGovernment ?? 0} (70+ 필요)`);
+    if ((g.usIntervention ?? 0) < 100) missing.push(`미국 개입 ${g.usIntervention ?? 0} (100 필요)`);
+    if ((g.japanIntervention ?? 0) < 60) missing.push(`일본 개입 ${g.japanIntervention ?? 0} (60+ 필요)`);
+    if (missing.length) {
+      reasons.push({ label: "S 하드 조건 미충족", detail: missing.join(", ") });
+    }
+  }
+
+  return reasons;
+}
+
+// =====================================================================
 // buildFinalReport — outcome 시 호출되는 통합 보고서
 // ---------------------------------------------------------------------
 //   - score/grade per side
@@ -478,6 +537,9 @@ export function buildFinalReport(state, campaign, data = {}) {
   const chinaGrade = gradeWithCap(chinaResult.score, chinaCap);
   const taiwanNaturalGrade = gradeFromScore(taiwanResult.score);
   const chinaNaturalGrade = gradeFromScore(chinaResult.score);
+  // v0.4.0-d4.1: cap이 자연 등급보다 낮을 때 사유 리스트
+  const taiwanCapReasons = (taiwanGrade !== taiwanNaturalGrade) ? buildCapReasons(state, "taiwan") : [];
+  const chinaCapReasons = (chinaGrade !== chinaNaturalGrade) ? buildCapReasons(state, "china") : [];
 
   // 진영별 해설 (양쪽 모드면 양쪽) — d4: cap 적용된 등급으로 해설
   const interpretations = {
@@ -540,6 +602,7 @@ export function buildFinalReport(state, campaign, data = {}) {
       grade: taiwanGrade,
       naturalGrade: taiwanNaturalGrade,
       gradeCap: taiwanCap,
+      capReasons: taiwanCapReasons,
       interpretation: interpretations.taiwan
     },
     china: {
@@ -550,6 +613,7 @@ export function buildFinalReport(state, campaign, data = {}) {
       grade: chinaGrade,
       naturalGrade: chinaNaturalGrade,
       gradeCap: chinaCap,
+      capReasons: chinaCapReasons,
       interpretation: interpretations.china
     },
     summary: {

@@ -63,7 +63,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.4.0-d4";
+const EXPECTED_BUILD = "v0.4.0-d4.1";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -817,7 +817,7 @@ function runManualTurn() {
   // v0.4.0-d2: outcome 발생 시 final 우선. DAY 모달은 막고 자동 모드도 중단.
   if (state.outcome && !finalModalShown) {
     autoToNextDayMode = false;
-    closeDayModalIfOpen();
+    closeAllPendingModals();
     showFinalResultModal();
     return;
   }
@@ -831,13 +831,15 @@ function runManualTurn() {
   }
 }
 
-// v0.4.0-d2: DAY modal이 떠 있으면 강제로 닫음 (final이 우선일 때)
-function closeDayModalIfOpen() {
+// v0.4.0-d2 → d4.1: outcome 발생 시 떠 있는 모든 pending 모달 강제 제거
+// (DAY end modal, reward selection 등)
+function closeAllPendingModals() {
   const overlay = document.getElementById("dayEndOverlay");
   if (overlay) {
     overlay.remove();
     pendingDayModal = false;
   }
+  // 다른 미래 모달들도 여기에 추가될 수 있음 (현재는 DAY가 유일)
 }
 
 function rememberPicks(side, ids) {
@@ -1604,11 +1606,14 @@ function showFinalResultModal() {
 
       <div class="final-main">
         <div class="final-grade-box" style="border-color: ${playerGradeColor};">
-          <div class="final-grade-label" style="color: ${playerColor};">${playerLabel} 캠페인 결과</div>
+          <div class="final-grade-label" style="color: ${playerColor};">${playerLabel} 전략 등급</div>
           <div class="final-grade-letter" style="color: ${playerGradeColor};">${player.grade}</div>
-          <div class="final-grade-score">${player.score} / 100</div>
+          <div class="final-grade-score-line">
+            <span class="final-score-label">원점수</span>
+            <span class="final-score-value">${player.score} / 100</span>
+          </div>
           ${player.naturalGrade && player.naturalGrade !== player.grade
-            ? `<div class="final-grade-cap-note">점수상 ${player.naturalGrade}이지만 전황상 ${player.grade} 상한</div>`
+            ? `<div class="final-grade-cap-note">자연 등급 ${player.naturalGrade} → 전황상 ${player.grade} 상한</div>`
             : ""}
         </div>
         <div class="final-opponent-box">
@@ -1620,6 +1625,17 @@ function showFinalResultModal() {
       <section class="final-interp">
         <p>${escapeHtml(player.interpretation)}</p>
       </section>
+
+      ${(player.capReasons && player.capReasons.length) ? `
+      <section class="final-cap-reasons">
+        <h3>전황 상한 사유</h3>
+        <ul class="cap-reasons-list">
+          ${player.capReasons.map(r =>
+            `<li><span class="cap-reason-label">${escapeHtml(r.label)}</span><span class="cap-reason-detail">${escapeHtml(r.detail)}</span></li>`
+          ).join("")}
+        </ul>
+      </section>
+      ` : ""}
 
       <section class="final-debrief">
         <h3>이번 캠페인의 이야기</h3>
@@ -1706,12 +1722,63 @@ function showFinalResultModal() {
       }
       .final-grade-label { font-size: 11px; letter-spacing: 1.5px; font-weight: 700; margin-bottom: 8px; }
       .final-grade-letter { font-size: 76px; font-weight: 900; line-height: 1; letter-spacing: 2px; text-shadow: 0 4px 16px rgba(0,0,0,.5); }
-      .final-grade-score { margin-top: 8px; font-size: 18px; font-weight: 700; color: #eaf3ff; }
+      .final-grade-score-line {
+        margin-top: 10px;
+        display: flex; align-items: baseline; justify-content: center; gap: 8px;
+      }
+      .final-score-label {
+        font-size: 10px;
+        color: rgba(234, 243, 255, .55);
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+      }
+      .final-score-value {
+        font-size: 18px;
+        font-weight: 700;
+        color: #eaf3ff;
+      }
       .final-grade-cap-note {
-        margin-top: 8px;
+        margin-top: 10px;
+        padding: 4px 10px;
+        background: rgba(255, 214, 107, .12);
+        border-radius: 12px;
         font-size: 11px;
-        color: rgba(255, 214, 107, .75);
+        color: rgba(255, 214, 107, .9);
         font-style: italic;
+        display: inline-block;
+      }
+      /* d4.1: cap reasons */
+      .final-cap-reasons {
+        background: rgba(255, 139, 148, .06);
+        border-left: 3px solid #ff8b94;
+        border-radius: 6px;
+        padding: 12px 16px;
+        margin-bottom: 18px;
+      }
+      .final-cap-reasons h3 {
+        margin: 0 0 6px;
+        color: #ff8b94;
+        font-size: 11px;
+        letter-spacing: 0.8px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+      .cap-reasons-list {
+        list-style: none; padding: 0; margin: 0;
+      }
+      .cap-reasons-list li {
+        display: flex; align-items: baseline; gap: 10px;
+        padding: 3px 0;
+        font-size: 12.5px;
+        line-height: 1.5;
+      }
+      .cap-reason-label {
+        color: #ff8b94;
+        font-weight: 600;
+        min-width: 110px;
+      }
+      .cap-reason-detail {
+        color: rgba(234, 243, 255, .85);
       }
       .final-opponent-box {
         flex: 1;

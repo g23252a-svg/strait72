@@ -219,4 +219,108 @@ if (cnTaiwanWin !== "C") {
 }
 console.log(`  ✓ 중국 + taiwan 승리 → C cap`);
 
+// =====================================================================
+// d4.1: capReasons 검증
+// =====================================================================
+console.log("\n[d4.1 capReasons]");
+
+import { buildCapReasons } from "./final_grade.js";
+
+// 11. cap 적용 안 된 경우 — reasons 빈 배열
+console.log("\n11. cap 안 걸린 자연 등급 — capReasons 빈 배열");
+const cleanReport = buildFinalReport(mkState({
+  gauges: { taiwanGovernment: 80, usIntervention: 100, japanIntervention: 70 },
+  provinces: mkProvs({ taipei: "stable_defense" })
+}), { selectedSide: "taiwan" }, { gameRules: { totalTurns: 30 } });
+if (cleanReport.taiwan.grade !== cleanReport.taiwan.naturalGrade) {
+  console.error(`FAIL: 자연 등급과 최종 등급 같아야`); process.exit(1);
+}
+if (cleanReport.taiwan.capReasons.length !== 0) {
+  console.error(`FAIL: cap 안 걸렸는데 reasons 있음`); process.exit(1);
+}
+console.log(`  ✓ cap 안 걸림 → capReasons []`);
+
+// 12. 영토 3 상실 — reasons에 점령지 항목 + 라벨/디테일
+console.log("\n12. 영토 3 상실 cap reasons");
+const lost3 = buildCapReasons(mkState({
+  provinces: mkProvs({
+    taipei: "stable_defense",
+    kaohsiung: "china_control",
+    tainan: "china_control",
+    taichung: "china_control"
+  })
+}), "taiwan");
+const lostReason = lost3.find(r => r.label.includes("점령지 3곳"));
+if (!lostReason) {
+  console.error(`FAIL: 점령지 3곳 사유 없음, got ${JSON.stringify(lost3)}`); process.exit(1);
+}
+if (!lostReason.detail.includes("taichung") || !lostReason.detail.includes("kaohsiung")) {
+  console.error(`FAIL: detail에 영토명 없음: "${lostReason.detail}"`); process.exit(1);
+}
+console.log(`  ✓ 영토 3 상실: "${lostReason.label}: ${lostReason.detail}"`);
+
+// 13. 타이베이 beachhead reasons
+console.log("\n13. 타이베이 beachhead cap reasons");
+const taipeiBh = buildCapReasons(mkState({
+  provinces: mkProvs({ taipei: { stage: "contested", landing: "beachhead" } })
+}), "taiwan");
+const taipeiReason = taipeiBh.find(r => r.label.includes("해안교두보"));
+if (!taipeiReason) {
+  console.error(`FAIL: 타이베이 beachhead 사유 없음`); process.exit(1);
+}
+console.log(`  ✓ 타이베이 beachhead: "${taipeiReason.label}: ${taipeiReason.detail}"`);
+
+// 14. 사용자 케이스: 영토 3 + 타이베이 beachhead + 지룽 china_control → 3개 사유
+console.log("\n14. 사용자 두번째 케이스 cap reasons");
+const userCase2 = mkState({
+  outcome: "taiwan_political_collapse_win",
+  gauges: { chinaPoliticalPressure: 100 },
+  provinces: mkProvs({
+    taipei:   { stage: "contested", landing: "beachhead" },
+    keelung:  "china_control",
+    taichung: "china_control",
+    kaohsiung:"china_control"
+  })
+});
+const userReasons = buildCapReasons(userCase2, "taiwan");
+if (userReasons.length !== 3) {
+  console.error(`FAIL: 3개 사유여야 (점령3 + 타이베이 + 지룽), got ${userReasons.length}: ${JSON.stringify(userReasons)}`);
+  process.exit(1);
+}
+console.log(`  ✓ 3개 사유:`);
+for (const r of userReasons) console.log(`    - ${r.label}: ${r.detail}`);
+
+// 15. S 하드 조건 미충족만 (영토/수도 안전)
+console.log("\n15. S 하드 조건 미충족 — 게이지 부족 사유");
+const sFail = buildCapReasons(mkState({
+  outcome: "taiwan_survival_win",
+  gauges: { taiwanGovernment: 65, usIntervention: 80, japanIntervention: 45 },
+  provinces: mkProvs({ taipei: "stable_defense" })
+}), "taiwan");
+const sFailReason = sFail.find(r => r.label.includes("S 하드 조건"));
+if (!sFailReason) {
+  console.error(`FAIL: S 하드 조건 미충족 사유 없음, got ${JSON.stringify(sFail)}`); process.exit(1);
+}
+if (!sFailReason.detail.includes("정부") || !sFailReason.detail.includes("미국") || !sFailReason.detail.includes("일본")) {
+  console.error(`FAIL: detail에 3가지 부족 게이지 없음: "${sFailReason.detail}"`); process.exit(1);
+}
+console.log(`  ✓ S 조건 미충족: "${sFailReason.detail}"`);
+
+// 16. buildFinalReport.taiwan.capReasons 통합
+console.log("\n16. buildFinalReport에 capReasons 필드 통합");
+const integState = mkState({
+  provinces: mkProvs({
+    taipei: { stage: "contested", landing: "beachhead" },
+    kaohsiung: "china_control", tainan: "china_control", taichung: "china_control"
+  })
+});
+const integReport = buildFinalReport(integState, { selectedSide: "taiwan" }, { gameRules: { totalTurns: 30 } });
+if (!Array.isArray(integReport.taiwan.capReasons)) {
+  console.error(`FAIL: taiwan.capReasons 배열 아님`); process.exit(1);
+}
+if (integReport.taiwan.capReasons.length === 0) {
+  console.error(`FAIL: capReasons 비어있음 (cap 걸린 케이스)`); process.exit(1);
+}
+console.log(`  ✓ taiwan.capReasons ${integReport.taiwan.capReasons.length}개 통합`);
+
 console.log("\n✓ grade cap smoke test passed");
