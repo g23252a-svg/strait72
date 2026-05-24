@@ -30,9 +30,9 @@ function mkState({ turn = 1, gauges = {}, persistent = {}, lastActId = null } = 
     },
     persistent: {
       lastActId: lastActId, occurrenceCount: {}, eventCooldowns: {}, triggeredOnce: [],
-      milestones: {}, ...persistent
+      milestones: {}, alliedIntervention: { active: false }, ...persistent
     },
-    thisTurn: { triggeredEvents: [], operationLog: [] },
+    thisTurn: { triggeredEvents: [], operationLog: [], visualEvents: [] },
     log: []
   };
 }
@@ -167,7 +167,7 @@ if (act3Triggered.length > 0) {
 }
 console.log(`  ✓ ACT 1에서 ACT 3 이벤트 발동 0건`);
 
-// ACT 3에서는 발동 가능 (조건 만족하는 이벤트 한정)
+// ACT 3에서는 발동 가능 (조건 만족하는 이벤트 한정, v0.4.2-a.1: 캡으로 1~2개)
 const integAct3 = mkState({ turn: 60, lastActId: "ACT_3" });
 phaseInternationalIntervention(integAct3, events, "start_of_turn", fullCamp);
 const triggeredAct3 = integAct3.thisTurn.triggeredEvents;
@@ -175,7 +175,15 @@ const act3Hits = triggeredAct3.filter(id => expectedAct3.includes(id));
 if (act3Hits.length === 0) {
   console.error(`FAIL: ACT 3 + 만족 조건인데 ACT 3 이벤트 0건 발동`); process.exit(1);
 }
-console.log(`  ✓ ACT 3에서 ACT 3 이벤트 ${act3Hits.length}건 발동: ${act3Hits.slice(0,3).join(", ")}${act3Hits.length>3?" 등":""}`);
+// v0.4.2-a.1: ACT 전용 이벤트는 턴당 최대 1개
+if (act3Hits.length > 1) {
+  console.error(`FAIL: ACT 3 이벤트 ${act3Hits.length}건 발동 — 캡 1개 위반`); process.exit(1);
+}
+// 전체 이벤트는 턴당 최대 2개
+if (triggeredAct3.length > 2) {
+  console.error(`FAIL: 전체 이벤트 ${triggeredAct3.length}건 발동 — 캡 2개 위반`); process.exit(1);
+}
+console.log(`  ✓ ACT 3 이벤트 캡 작동: ACT3 전용 ${act3Hits.length}건 (≤1), 전체 ${triggeredAct3.length}건 (≤2)`);
 
 // =====================================================================
 // #8 actFilter 잘못된 값 — 안전 동작 (event는 발동 X)

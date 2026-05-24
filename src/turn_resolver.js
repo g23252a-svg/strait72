@@ -675,14 +675,53 @@ export function phaseDamagePolitical(state) {
 }
 
 export function phaseInternationalIntervention(state, events, timing, campaign = null) {
-  for (const event of events) {
-    if (event.timing !== timing) continue;
+  // v0.4.2-a.1: 턴당 발동 캡
+  //   - 전체 글로벌 이벤트: 최대 2개
+  //   - ACT 전용 이벤트 (actFilter 있음): 최대 1개
+  // 카운트는 state.thisTurn.triggeredEvents 기준 — phaseInternationalIntervention은
+  // 한 턴에 두 번 호출되므로 두 호출 전체에 걸쳐 누적된다.
+  const MAX_TOTAL_EVENTS_PER_TURN = 2;
+  const MAX_ACT_SPECIFIC_EVENTS_PER_TURN = 1;
+
+  // 이번 턴 이미 발동한 이벤트 분석
+  const alreadyTriggered = state.thisTurn.triggeredEvents || [];
+  let totalCount = alreadyTriggered.length;
+  let actSpecificCount = 0;
+  for (const triggeredId of alreadyTriggered) {
+    const e = events.find(ev => ev.id === triggeredId);
+    if (e && Array.isArray(e.actFilter) && e.actFilter.length > 0) {
+      actSpecificCount++;
+    }
+  }
+
+  // v0.4.2-a.1: 후보 정렬 — ACT 전용 이벤트를 먼저 검토 (장기전 콘텐츠 우선)
+  // 일반 이벤트는 항상 발동 가능 풀이 큰 반면, ACT 전용은 게이팅으로 좁아서
+  // 캡에 밀리지 않도록 우선순위 부여.
+  const candidates = events.filter(ev => ev.timing === timing);
+  candidates.sort((a, b) => {
+    const aAct = Array.isArray(a.actFilter) && a.actFilter.length > 0 ? 0 : 1;
+    const bAct = Array.isArray(b.actFilter) && b.actFilter.length > 0 ? 0 : 1;
+    return aAct - bAct;  // ACT 전용 먼저
+  });
+
+  for (const event of candidates) {
     if (state.thisTurn.triggeredEvents.includes(event.id)) continue;
     if (!shouldTriggerEvent(state, event, campaign)) continue;
+
+    // 캡 체크
+    if (totalCount >= MAX_TOTAL_EVENTS_PER_TURN) break;
+    const isActSpecific = Array.isArray(event.actFilter) && event.actFilter.length > 0;
+    if (isActSpecific && actSpecificCount >= MAX_ACT_SPECIFIC_EVENTS_PER_TURN) {
+      // ACT 전용 1개 캡 도달 — 이 이벤트는 발동 안 함 (그러나 다른 이벤트는 계속 검토)
+      continue;
+    }
+
     applyEffects(state, event.effects, { side: "global", resolvedTargets: [] });
     markEventTriggered(state, event);
     state.thisTurn.triggeredEvents.push(event.id);
     state.thisTurn.operationLog.push(`이벤트 발동: ${event.name}`);
+    totalCount++;
+    if (isActSpecific) actSpecificCount++;
   }
   updateAlliedInterventionState(state);
   state.log.push({
@@ -796,6 +835,13 @@ export function phaseTurnEnd(state, campaign = null) {
         });
         // operationLog에도 강조
         state.thisTurn?.operationLog?.push(`▶ ${nowAct.name} 진입: ${nowAct.description}`);
+        // v0.4.2-a.1: ACT 3 진입 시점 기록 — 수도권 압박 승리 지연 계산용
+        if (nowAct.id === "ACT_3") {
+          if (!state.persistent.milestones) state.persistent.milestones = {};
+          if (!state.persistent.milestones.act3EnteredAt) {
+            state.persistent.milestones.act3EnteredAt = state.turn;
+          }
+        }
       }
       updateLastActId(state, campaign);
 
@@ -1008,8 +1054,16 @@ export function checkVictoryConditions(state, campaign = null) {
     if (isShortMode) {
       return "china_capital_pressure_win";
     } else {
-      const isAct3 = (state.persistent?.lastActId === "ACT_3") || (state.turn >= 45);
-      if (isAct3) return "china_capital_pressure_win";
+      // v0.4.2-a.1: ACT 3 진입 직후 즉시 종료를 방지하기 위해 두 가지 조건 모두 충족 필요
+      //   1) ACT 3 진입 상태
+      //   2) turn >= max(45, act3EnteredAt + 6)  ← 조기 ACT 3 진입(T35-44) 시 최소 6턴 지연
+      const isAct3 = state.persistent?.lastActId === "ACT_3";
+      const act3EnteredAt = state.persistent?.milestones?.act3EnteredAt || 45;
+      const minWinTurn = Math.max(45, act3EnteredAt + 6);
+      if (isAct3 && state.turn >= minWinTurn) {
+        return "china_capital_pressure_win";
+      }
+      // 아직 너무 빠름 — milestone만 기록
       if (!state.persistent.milestones) state.persistent.milestones = {};
       if (!state.persistent.milestones.capitalPressureAt) {
         state.persistent.milestones.capitalPressureAt = state.turn;

@@ -320,6 +320,18 @@ export function suggestChinaAxis(state, axes) {
  * = 가장 위협받는 지역의 태그 또는 id 반환
  */
 export function suggestTaiwanFocus(state) {
+  // v0.4.2-a.1: 타이베이 beachhead+ 시 북부 강제 focus (수도권 위기 대응 강화)
+  const taipei = state.provinces?.taipei;
+  const taipeiAtRisk = taipei && (
+    taipei.landingStage === "beachhead" ||
+    taipei.landingStage === "inland_expansion" ||
+    taipei.controlStage === "beachhead_established" ||
+    taipei.controlStage === "china_control"
+  );
+  if (taipeiAtRisk) {
+    return { focus: "taipei", mode: "province", scores: [{ id: "taipei", score: 99, tags: ["north", "capital"] }], forcedReason: "capital_crisis" };
+  }
+
   const provs = Object.values(state.provinces).filter((p) => p.type !== "sea_zone");
   if (!provs.length) return null;
 
