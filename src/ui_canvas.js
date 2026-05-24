@@ -377,7 +377,8 @@ function drawOperationalMotion(ctx, w, h, state, meta = {}) {
       ly = sy + (ty - sy) * (0.35 + 0.35 * t);
     }
     // v0.5-b: 실제 상륙정 PNG 토큰. 로드 안 되면 fallback drawShipIcon.
-    const tokenSize = 48 * craftSize;
+    // v0.5-b1: 크기 축소 48 → 36 (지도 위 전략 심볼 스케일)
+    const tokenSize = 36 * craftSize;
     const tokenDrawn = drawTokenImage(ctx, "china_landing_craft", lx, ly, tokenSize, {
       shadowColor: "rgba(255, 80, 80, 0.6)", shadowBlur: 14
     });
@@ -405,9 +406,10 @@ function drawAlliedIntervention(ctx, w, h, state, meta = {}) {
   ctx.save();
 
   // v0.5-b: 미국 항모전단 — 실제 PNG 토큰 (CV/DD 구성). 대만 동쪽 해상.
+  // v0.5-b1: 크기 120 → 90 (지도 위 전략 토큰 스케일)
   const baseX = w * 0.84;
   const baseY = h * 0.30;
-  const usSize = 120;  // PNG는 CV+DD 3척 묶음이라 크게
+  const usSize = 90;
   const usDrawn = drawTokenImage(ctx, "us_carrier_group", baseX, baseY, usSize, {
     shadowColor: "rgba(90, 169, 255, 0.55)", shadowBlur: 18
   });
@@ -429,9 +431,10 @@ function drawAlliedIntervention(ctx, w, h, state, meta = {}) {
 
   if (allied.japanNavalSupport) {
     // v0.5-b: 일본 P-1 — 실제 PNG. 북동쪽 해상.
+    // v0.5-b1: 크기 90 → 60 (정찰기 스케일)
     const jpX = w * 0.76;
     const jpY = h * 0.14;
-    const jpSize = 90;
+    const jpSize = 60;
     const jpDrawn = drawTokenImage(ctx, "japan_patrol_aircraft", jpX, jpY, jpSize, {
       shadowColor: "rgba(140, 200, 255, 0.5)", shadowBlur: 14
     });
@@ -579,17 +582,17 @@ function drawChinaBlockadeFleet(ctx, w, h, state, meta = {}) {
 
   const strait = PROVINCE_LAYOUT.strait;
   if (!strait) return;
-  // strait 좌표보다 약간 남쪽 — 대만 해협 라벨과 겹치지 않게
-  const cx = strait.x * w + 10;
-  const cy = strait.y * h + 30;
+  // v0.5-b1: 위치 조정 — 대만 해협 라벨과 겹치지 않게 더 서쪽 바다로
+  const cx = strait.x * w - 20;
+  const cy = strait.y * h + 40;
 
   const pulseT = (Date.now() % 1800) / 1800;
   const pulseAlpha = 0.55 + 0.25 * Math.sin(pulseT * Math.PI * 2);
 
-  // PNG 토큰 (붉은 원형 함대)
-  const tokenSize = 110;
+  // v0.5-b1: 크기 축소 110 → 80 (지도 위 전략 토큰 스케일)
+  const tokenSize = 80;
   const drawn = drawTokenImage(ctx, "china_blockade_fleet", cx, cy, tokenSize, {
-    shadowColor: `rgba(255, 80, 80, ${pulseAlpha})`, shadowBlur: 16
+    shadowColor: `rgba(255, 80, 80, ${pulseAlpha})`, shadowBlur: 14
   });
   if (!drawn) {
     // fallback: 단순 빨간 원
@@ -598,7 +601,7 @@ function drawChinaBlockadeFleet(ctx, w, h, state, meta = {}) {
     ctx.strokeStyle = "rgba(255, 100, 110, 0.9)";
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(cx, cy, 35, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 30, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
     ctx.restore();
@@ -607,21 +610,21 @@ function drawChinaBlockadeFleet(ctx, w, h, state, meta = {}) {
   // 라벨
   ctx.save();
   ctx.fillStyle = "#ffd0d0";
-  ctx.font = "700 12px system-ui";
+  ctx.font = "700 11px system-ui";
   ctx.textAlign = "center";
   ctx.shadowColor = "rgba(0,0,0,0.9)";
   ctx.shadowBlur = 5;
-  ctx.fillText("🇨🇳 해상 봉쇄", cx, cy + tokenSize / 2 + 12);
+  ctx.fillText("🇨🇳 해상 봉쇄", cx, cy + tokenSize / 2 + 10);
   ctx.shadowBlur = 0;
   ctx.restore();
 }
 
 // =====================================================================
 // v0.5-b: 대만 방어진지 토큰
-// ---------------------------------------------------------------------
-// 안정 방어 상태(stable_defense)이면서 거점에 표시. PNG 토큰을 거점 좌표 옆에
-// 작게 배치 (라벨 가리지 않게 오른쪽 위 오프셋).
-// china_control 거점은 표시 안 함 (이미 함락).
+// v0.5-b1: 평시 표시 제거 — 시각 노이즈 방지.
+//          표시 조건:
+//          - landingStage !== "none"인 거점 (방어 중인 상황)
+//          - selectedProvince === id (선택된 거점)
 // =====================================================================
 function drawTaiwanDefenseTokens(ctx, w, h, state, meta = {}) {
   if (!state?.provinces) return;
@@ -629,20 +632,26 @@ function drawTaiwanDefenseTokens(ctx, w, h, state, meta = {}) {
     if (id === "strait") continue;
     const province = state.provinces[id];
     if (!province) continue;
-    // china_control / coastal_breach / contested 상태는 방어진지 표시 X
-    // beachhead_established도 함락 직전이므로 X
-    if (province.controlStage !== "stable_defense") continue;
-    // 상륙 진행 중 (landingStage !== none)이면 표시 X — 위험 상태
-    if (province.landingStage && province.landingStage !== "none") continue;
+    // china_control / beachhead_established 거점은 표시 X (이미 함락)
+    if (province.controlStage === "china_control" ||
+        province.controlStage === "beachhead_established") continue;
 
-    const cx = pos.x * w + pos.r + 8;  // 거점 토큰 오른쪽 위
-    const cy = pos.y * h - pos.r - 8;
-    const tokenSize = 36;
+    // v0.5-b1: 평시 숨김. 다음 조건 중 하나일 때만 표시:
+    //   1) 상륙 진행 중 (방어 중인 거점)
+    //   2) 사용자가 선택한 거점
+    const underLanding = province.landingStage && province.landingStage !== "none";
+    const isSelected = meta.selectedProvince === id;
+    if (!underLanding && !isSelected) continue;
+
+    const cx = pos.x * w + pos.r + 6;  // 거점 토큰 오른쪽
+    const cy = pos.y * h - pos.r - 6;
+    // v0.5-b1: 크기 축소 — 36 → 28 (상황 발생 시 강조용)
+    const tokenSize = underLanding ? 32 : 28;
     drawTokenImage(ctx, "taiwan_defense_emplacement", cx, cy, tokenSize, {
-      alpha: 0.92,
-      shadowColor: "rgba(120, 220, 140, 0.5)", shadowBlur: 8
+      alpha: underLanding ? 1.0 : 0.85,
+      shadowColor: underLanding ? "rgba(120, 220, 140, 0.7)" : "rgba(120, 220, 140, 0.4)",
+      shadowBlur: underLanding ? 12 : 6
     });
-    // 로드 실패 시 fallback은 그리지 않음 — 안정 거점에 과한 시각 노이즈 방지
   }
 }
 

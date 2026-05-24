@@ -88,16 +88,21 @@ if (!ui.includes("recentChinaAxes") || !ui.includes("thisTurn?.chinaAxis")) {
 console.log(`  ✓ drawChinaBlockadeFleet — thisTurn.chinaAxis + recentChinaAxes 시그널`);
 
 // =====================================================================
-// #5: drawTaiwanDefenseTokens
+// #5: drawTaiwanDefenseTokens — v0.5-b1: 평시 숨김
 // =====================================================================
-console.log("\n5. drawTaiwanDefenseTokens (stable_defense 거점)");
+console.log("\n5. drawTaiwanDefenseTokens (위협/선택 거점만 — v0.5-b1)");
 if (!ui.includes("function drawTaiwanDefenseTokens")) {
   console.error(`FAIL: drawTaiwanDefenseTokens 없음`); process.exit(1);
 }
-if (!ui.includes('"stable_defense"')) {
-  console.error(`FAIL: stable_defense 시그널 사용 X`); process.exit(1);
+// v0.5-b1: stable_defense 조건은 제거되고, underLanding / isSelected로 대체
+if (!ui.includes("underLanding") || !ui.includes("isSelected")) {
+  console.error(`FAIL: v0.5-b1 표시 조건 (underLanding / isSelected) 없음`); process.exit(1);
 }
-console.log(`  ✓ drawTaiwanDefenseTokens — stable_defense + landingStage=none 거점만`);
+// 평시 표시 막는지: china_control + beachhead_established 제외
+if (!ui.includes('"china_control"') || !ui.includes('"beachhead_established"')) {
+  console.error(`FAIL: 함락 거점 제외 로직 없음`); process.exit(1);
+}
+console.log(`  ✓ drawTaiwanDefenseTokens — 평시 숨김, underLanding/isSelected 트리거`);
 
 // =====================================================================
 // #6: drawGameCanvas 호출
@@ -171,9 +176,9 @@ console.log(`  ✓ turn_resolver / state.js 모두 UI 토큰 코드 비참조`);
 // =====================================================================
 // #11: 자동 리포트 메트릭 회귀 X — 별도 실행 확인은 build pipeline에서
 // =====================================================================
-console.log("\n10. v0.5-b 시그널 명확성 — naval_blockade / stable_defense / landingStage");
-// 시그널 키워드가 코드에 명확히 박혀있는지 (string-grep)
-const signals = ["naval_blockade", "stable_defense", "landingStage", "controlStage"];
+console.log("\n10. v0.5-b 시그널 명확성 — naval_blockade / landingStage / controlStage");
+// v0.5-b1: stable_defense 시그널 직접 사용은 제거 (평시 숨김 정책)
+const signals = ["naval_blockade", "landingStage", "controlStage"];
 for (const s of signals) {
   if (!ui.includes(s)) {
     console.error(`FAIL: 시그널 키워드 '${s}' 없음`); process.exit(1);
