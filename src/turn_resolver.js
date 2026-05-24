@@ -479,6 +479,8 @@ export function phaseStrategyDeclaration(state, decisions) {
 
 export function phaseCardPlacement(state, decisions, cardIndex, campaign = null) {
   const placed = { china: [], taiwan: [] };
+  // v0.4.2-d: actFilter로 차단된 카드도 손에서 빼서 discard로 보내야 deck 일관성 유지
+  const blockedByFilter = { china: [], taiwan: [] };
   // v0.4.2-b2: 카드 ACT 필터 평가용 현재 ACT
   // act_structure와 동일한 추론 로직: lastActId 우선, 없으면 turn 기반
   const currentAct = state.persistent?.lastActId
@@ -499,6 +501,7 @@ export function phaseCardPlacement(state, decisions, cardIndex, campaign = null)
       if (Array.isArray(card.actFilter) && card.actFilter.length > 0) {
         if (!card.actFilter.includes(currentAct)) {
           state.log.push({ turn: state.turn, level: "info", msg: `card act-filter blocked: ${cardId} (current ${currentAct})` });
+          blockedByFilter[side].push(cardId);
           continue;
         }
       }
@@ -517,6 +520,9 @@ export function phaseCardPlacement(state, decisions, cardIndex, campaign = null)
   }
   state.thisTurn.chinaPlayed = placed.china;
   state.thisTurn.taiwanPlayed = placed.taiwan;
+  // v0.4.2-d: 차단된 카드도 손에서 빼서 discard로 (deck 일관성)
+  state.thisTurn.chinaBlocked = blockedByFilter.china;
+  state.thisTurn.taiwanBlocked = blockedByFilter.taiwan;
   state.log.push({ turn: state.turn, phase: 3, name: "card_placement", placed });
   return state;
 }
@@ -601,17 +607,24 @@ export function phaseOperationResolution(state, cardIndex, axisIndex) {
   }
 
   // 4. 손에서 사용 카드 제거 → discard로 이동 (카운터플레이로 이미 빠진 카드 제외)
+  // v0.4.2-d: actFilter로 차단된 카드도 같이 손→discard (deck 일관성)
   const dc = state.decks?.china;
   const dt = state.decks?.taiwan;
   if (dc) {
-    const played = state.thisTurn.chinaPlayed.filter((id) => dc.hand.includes(id));
-    dc.hand = dc.hand.filter((id) => !played.includes(id));
-    dc.discard.push(...played);
+    const playedAndBlocked = [
+      ...state.thisTurn.chinaPlayed,
+      ...(state.thisTurn.chinaBlocked || [])
+    ].filter((id) => dc.hand.includes(id));
+    dc.hand = dc.hand.filter((id) => !playedAndBlocked.includes(id));
+    dc.discard.push(...playedAndBlocked);
   }
   if (dt) {
-    const played = state.thisTurn.taiwanPlayed.filter((id) => dt.hand.includes(id));
-    dt.hand = dt.hand.filter((id) => !played.includes(id));
-    dt.discard.push(...played);
+    const playedAndBlocked = [
+      ...state.thisTurn.taiwanPlayed,
+      ...(state.thisTurn.taiwanBlocked || [])
+    ].filter((id) => dt.hand.includes(id));
+    dt.hand = dt.hand.filter((id) => !playedAndBlocked.includes(id));
+    dt.discard.push(...playedAndBlocked);
   }
 
   state.log.push({
@@ -816,6 +829,27 @@ export function phaseTurnEnd(state, campaign = null) {
   // 1. 승리 조건 체크 (v0.4.1.2: campaign 전달로 시나리오 분기)
   state.outcome = checkVictoryConditions(state, campaign);
 
+  // v0.4.2-d: 미션 모드면 일반 승리 조건보다 우선 미션 평가
+  // 미션 완료/실패 시 outcome 오버라이드
+  if (!state.outcome && state.mission?.id) {
+    const missionDef = state.mission._def;  // 미션 정의는 applyMissionToState에서 보존
+    if (missionDef) {
+      // 즉시 평가
+      const evalResult = evaluateMissionState(state, missionDef);
+      if (evalResult.failed) {
+        state.outcome = "mission_failed";
+        state.missionResult = evalResult;
+      } else if (evalResult.complete) {
+        state.outcome = "mission_complete";
+        state.missionResult = evalResult;
+      } else if (state.turn >= state.totalTurns) {
+        // 시간 초과 — 미션 시간 안에 클리어 못 함
+        state.outcome = "mission_timeout";
+        state.missionResult = evalResult;
+      }
+    }
+  }
+
   // 1.5. 이번 턴 한정 방어 보너스 회수
   // defenseValueDamage(영구 손상)는 유지하고, defense_buff 계열의 임시 보너스만 제거한다.
   const cleanupEntries = [];
@@ -1009,6 +1043,54 @@ function mergeEffects(base = {}, bonus = {}) {
     }
   }
   return out;
+}
+
+// v0.4.2-d: 미션 평가 인라인 (mission_scenarios.js와 동일 로직, 의존성 회피)
+function evalMissionCondition(cond, state) {
+  const g = state.gauges || {};
+  const provs = state.provinces || {};
+  switch (cond.type) {
+    case "gauge_min": return (g[cond.metric] || 0) >= cond.value;
+    case "gauge_max": return (g[cond.metric] || 0) <= cond.value;
+    case "province_not_china_held": {
+      const p = provs[cond.province];
+      return !p || (p.controlStage !== "beachhead_established" && p.controlStage !== "china_control");
+    }
+    case "province_china_held": {
+      const p = provs[cond.province];
+      return p && (p.controlStage === "beachhead_established" || p.controlStage === "china_control");
+    }
+    case "any_province_china_held":
+      return (cond.provinces || []).some(id => {
+        const p = provs[id];
+        return p && (p.controlStage === "beachhead_established" || p.controlStage === "china_control");
+      });
+    case "no_provinces_china_held":
+      return !Object.values(provs).some(p =>
+        p.controlStage === "beachhead_established" || p.controlStage === "china_control");
+    case "province_count_china_held": {
+      const c = Object.values(provs).filter(p =>
+        p.controlStage === "beachhead_established" || p.controlStage === "china_control").length;
+      return c >= (cond.min || 1);
+    }
+    case "any_province_taiwan_recovered":
+      return (cond.provinces || []).some(id => {
+        const p = provs[id];
+        return p && p.controlStage !== "beachhead_established" && p.controlStage !== "china_control";
+      });
+    default: return false;
+  }
+}
+
+function evaluateMissionState(state, missionDef) {
+  const objs = missionDef.missionObjectives || [];
+  const fails = missionDef.failureConditions || [];
+  const objectiveStatus = objs.map(o => ({ id: o.id, text: o.text, met: evalMissionCondition(o, state) }));
+  const failureStatus = fails.map(f => ({ id: f.id, text: f.text, triggered: evalMissionCondition(f, state) }));
+  const failed = failureStatus.some(f => f.triggered);
+  if (failed) return { complete: false, failed: true, objectiveStatus, failureStatus };
+  const complete = objectiveStatus.length > 0 && objectiveStatus.every(o => o.met);
+  return { complete, failed: false, objectiveStatus, failureStatus };
 }
 
 function halveDamageEffects(effects) {
