@@ -23,6 +23,7 @@ import {
 import {
   saveGame, loadGame, getSaveMetadata, hasSavedGame, clearSavedGame
 } from "./save_system.js";
+import * as sound from "./sound_system.js";
 import {
   chooseChinaCards as aiChooseChinaCards,
   chooseTaiwanCards as aiChooseTaiwanCards,
@@ -75,7 +76,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.5.0-c";
+const EXPECTED_BUILD = "v0.5.0-c.3";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -718,6 +719,7 @@ function bindDom() {
     "chinaMeters", "taiwanMeters", "interventionMeters", "logBox",
     "chinaAxisSelect", "taiwanFocusSelect", "provinceSelect",
     "chinaCards", "taiwanCards", "runTurnBtn", "resetBtn", "saveBtn",
+    "soundToggleBtn", "soundVolume",
     "suggestBtn", "autoTurnBtn", "mapCanvas"
   ]) {
     dom[id] = document.getElementById(id);
@@ -969,6 +971,50 @@ function bindEvents() {
       }
     });
   }
+
+  // v0.5-c.3a: 사운드 시스템 — 첫 사용자 인터랙션 시 AudioContext 활성화
+  function ensureSoundInit() {
+    if (!sound.isInitialized()) {
+      sound.initOnUserGesture();
+      // 초기화 후 토글 버튼 상태 동기화
+      refreshSoundUi();
+    }
+  }
+  // body에 click 한 번 들어오면 무조건 초기화 (한 번만)
+  document.body.addEventListener("click", ensureSoundInit, { once: true, capture: true });
+
+  // 사운드 UI 동기화 (초기 진입 + 토글 후)
+  function refreshSoundUi() {
+    const enabled = sound.isEnabled();
+    if (dom.soundToggleBtn) {
+      dom.soundToggleBtn.textContent = enabled ? "🔊" : "🔇";
+      dom.soundToggleBtn.title = enabled ? "사운드 ON (클릭하여 끄기)" : "사운드 OFF (클릭하여 켜기)";
+    }
+    if (dom.soundVolume) {
+      dom.soundVolume.value = String(Math.round(sound.getVolume() * 100));
+      dom.soundVolume.disabled = !enabled;
+      dom.soundVolume.style.opacity = enabled ? "1" : "0.5";
+    }
+  }
+  refreshSoundUi();
+
+  if (dom.soundToggleBtn) {
+    dom.soundToggleBtn.addEventListener("click", () => {
+      ensureSoundInit();
+      const next = !sound.isEnabled();
+      sound.setEnabled(next);
+      refreshSoundUi();
+      // 켤 때 살짝 확인음
+      if (next) sound.play("defense_success");
+    });
+  }
+  if (dom.soundVolume) {
+    dom.soundVolume.addEventListener("input", (e) => {
+      ensureSoundInit();
+      const v = parseInt(e.target.value, 10) / 100;
+      sound.setVolume(v);
+    });
+  }
   dom.suggestBtn.addEventListener("click", () => {
     applySuggestion(true);
     render();
@@ -1217,6 +1263,74 @@ function autoPickCards(side, context) {
   document.querySelectorAll(selector).forEach(el => { el.checked = ids.has(el.value); });
 }
 
+// v0.5-c.3b: 턴 결과 → 사운드 트리거
+// state 비교로 어떤 일이 일어났는지 추론. 게임 로직 영향 X.
+//
+// 트리거 규칙:
+//   1. 공격 카드 사용 → missile_launch (한 번)
+//   2. 봉쇄 함대 첫 등장 (axis가 막 naval_blockade로 바뀜) → naval_blockade
+//   3. 새로 상륙 진척 (landingStage 진행) → landing_craft_move
+//   4. 새로 recentBattles에 추가됨 → strike_impact + missile_flyby (0.3초 후)
+//   5. 상륙 시도가 실패 (landingStage 후퇴) → defense_success
+//
+// 사운드는 sound.play() — 음소거/미초기화 시 자동 noop.
+function triggerTurnSounds(snapshot) {
+  if (!state) return;
+
+  // 1. 공격 카드 사용 감지 — 양 진영 카드 type=attack 또는 ranged 있으면
+  const playedCards = [
+    ...(state.thisTurn?.chinaPlayed || []),
+    ...(state.thisTurn?.taiwanPlayed || [])
+  ];
+  const hasAttackCard = playedCards.some(cardId => {
+    const c = indices?.cardIndex?.[cardId];
+    return c && (c.type === "attack" || c.type === "ranged" || c.type === "modifier");
+  });
+  if (hasAttackCard) {
+    sound.play("missile_launch");
+    // missile_flyby는 launch 직후 살짝 늦게
+    setTimeout(() => sound.play("missile_flyby"), 350);
+  }
+
+  // 2. 봉쇄 함대 등장 — chinaAxis가 막 naval_blockade로 바뀜
+  const nowAxis = state.thisTurn?.chinaAxis;
+  const wasBlockading = snapshot.recentChinaAxes.includes("naval_blockade");
+  if (nowAxis === "naval_blockade" && !wasBlockading) {
+    sound.play("naval_blockade");
+  }
+
+  // 3. 상륙 진척 — 어느 거점이든 landingStage가 진행됨
+  const stageOrder = ["none", "sea_superiority", "landing_attempt", "beachhead", "inland_expansion"];
+  let landingProgressed = false;
+  let landingRetreated = false;
+  for (const [id, prov] of Object.entries(state.provinces || {})) {
+    const oldStage = snapshot.landingStages[id] || "none";
+    const newStage = prov.landingStage || "none";
+    const oldIdx = stageOrder.indexOf(oldStage);
+    const newIdx = stageOrder.indexOf(newStage);
+    if (newIdx > oldIdx && oldIdx >= 0 && newIdx > 0) {
+      landingProgressed = true;
+    } else if (newIdx < oldIdx && oldIdx > 0) {
+      landingRetreated = true;
+    }
+  }
+  if (landingProgressed) {
+    sound.play("landing_craft_move");
+  }
+
+  // 4. 새로운 전투 (recentBattles 새 항목) → strike_impact
+  const newBattles = (state.persistent?.recentBattles || [])
+    .filter(id => !snapshot.recentBattles.has(id));
+  if (newBattles.length > 0) {
+    sound.play("strike_impact");
+  }
+
+  // 5. 상륙 후퇴 → defense_success
+  if (landingRetreated) {
+    sound.play("defense_success");
+  }
+}
+
 function runManualTurn() {
   if (state.outcome) return;
 
@@ -1251,7 +1365,22 @@ function runManualTurn() {
   rememberPicks("china", decisions.chinaCards);
   rememberPicks("taiwan", decisions.taiwanCards);
 
+  // v0.5-c.3b: 턴 실행 전 state snapshot (사운드 트리거 비교용)
+  const preTurnSnapshot = {
+    landingStages: {},
+    recentBattles: new Set(state.persistent?.recentBattles || []),
+    chinaAxis: state.thisTurn?.chinaAxis,
+    recentChinaAxes: [...(state.persistent?.recentChinaAxes || [])]
+  };
+  for (const [id, p] of Object.entries(state.provinces || {})) {
+    preTurnSnapshot.landingStages[id] = p.landingStage;
+  }
+
   runTurn(state, decisions, indices, campaign);
+
+  // v0.5-c.3b: 턴 결과 → 사운드 트리거
+  triggerTurnSounds(preTurnSnapshot);
+
   if (state.outcome) {
     dom.runTurnBtn.disabled = true;
     dom.autoTurnBtn.disabled = true;

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>해협의 72시간 - v0.5.0-c Polish</title>
+  <title>해협의 72시간 - v0.5.0-c.3 Polish</title>
   <style>
     :root {
       --bg: #07111f;
@@ -430,13 +430,15 @@
     <header>
       <div class="title">
         <h1>해협의 72시간</h1>
-        <span class="build-label">v0.5.0-c Polish</span>
+        <span class="build-label">v0.5.0-c.3 Polish</span>
       </div>
       <div class="turnline">
         <span class="chip"><strong id="turnCounter">TURN - / -</strong></span>
         <span class="chip" id="gameClock">D+0 00:00</span>
         <span class="chip" id="actHudChip"><span id="actHudLabel">현재 국면</span>: <strong id="chinaClock">-h</strong></span>
         <span class="chip" id="outcomeChip">진행 중</span>
+        <button id="soundToggleBtn" class="reset-top" title="사운드 ON/OFF (음소거 시 효과음 재생 안 함)">🔇</button>
+        <input type="range" id="soundVolume" min="0" max="100" value="30" style="width:80px;vertical-align:middle;accent-color:#80efb1;" title="볼륨" />
         <button id="saveBtn" class="reset-top" title="현재 게임을 저장합니다 (DAY 종료 시 자동 저장도 함)">💾 저장</button>
         <button id="resetBtn" class="reset-top">새 게임</button>
       </div>
@@ -501,6 +503,6 @@
     </footer>
   </div>
 
-  <script type="module" src="./src/playable_app.js?v=050c-20260524"></script>
+  <script type="module" src="./src/playable_app.js?v=050c3-20260524"></script>
 </body>
 </html>
