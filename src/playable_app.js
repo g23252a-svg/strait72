@@ -14,6 +14,7 @@ import { AXIS_DEFAULT_TARGETS, chooseBestTarget } from "./combat_resolver.js";
 import { initializeDecks, DRAW_PER_TURN } from "./deck_state.js";
 import { buildCardTooltipHTML } from "./card_tooltip.js";
 import { generateActObjectives, shouldShowActObjectives } from "./act_objectives.js";
+import { MISSIONS, listMissions, applyMissionToState } from "./mission_scenarios.js";
 import {
   chooseChinaCards as aiChooseChinaCards,
   chooseTaiwanCards as aiChooseTaiwanCards,
@@ -65,7 +66,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.4.2-d";
+const EXPECTED_BUILD = "v0.4.2-d1";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -112,8 +113,12 @@ async function init() {
   await loadData();
 
   // v0.4.0-a: 진영 선택 화면을 먼저 보여줌
-  showSideSelectModal((selectedSide, difficulty, scenarioId) => {
+  // v0.4.2-d1: missionId 옵션 추가
+  showSideSelectModal((selectedSide, difficulty, scenarioId, missionId) => {
     campaign = createCampaignState(selectedSide, difficulty, scenarioId);
+    if (missionId) {
+      campaign.missionId = missionId;
+    }
     saveLastChoice(selectedSide, difficulty, scenarioId);
     resetGame();
     bindEvents();
@@ -139,6 +144,7 @@ function renderBuildBadge() {
 }
 
 // v0.4.0-a: 진영 선택 모달
+// v0.4.2-d1: 미션 모드 탭 + 5개 미션 카드 그리드
 function showSideSelectModal(onConfirm) {
   const last = loadLastChoice();
   const overlay = document.createElement("div");
@@ -171,6 +177,26 @@ function showSideSelectModal(onConfirm) {
     </button>
   `).join("");
 
+  // v0.4.2-d1: 미션 카드 (5개)
+  const missionList = listMissions();
+  const missionCards = missionList.map(m => {
+    const sideLabel = m.recommendedSide === "taiwan" ? "🇹🇼 대만"
+                    : m.recommendedSide === "china" ? "🇨🇳 중국"
+                    : "양측";
+    const baseLabel = m.baseScenario === "short_72h" ? "72시간" : "21일";
+    return `
+      <button class="mission-card" data-mission="${m.id}">
+        <div class="mission-name">${m.name}</div>
+        <div class="mission-desc">${m.description}</div>
+        <div class="mission-meta">
+          <span class="mission-side">${sideLabel}</span>
+          <span class="mission-base">베이스: ${baseLabel}</span>
+          <span class="mission-turns">${m.missionTurns}턴</span>
+        </div>
+      </button>
+    `;
+  }).join("");
+
   // v0.4.1.1: 빠른 시작은 scenarioId 저장 안 되어 있으면 short_72h 기본
   const quickScenarioName = SCENARIOS[last?.scenarioId]?.name || SCENARIOS.short_72h.name;
   const quickStartHtml = last ? `
@@ -186,23 +212,40 @@ function showSideSelectModal(onConfirm) {
   overlay.innerHTML = `
     <div class="side-modal">
       <h2>해협의 72시간</h2>
-      <p class="subtitle">진영 선택</p>
+      <p class="subtitle">진영 / 모드 선택</p>
       ${quickStartHtml}
-      <div class="side-list" id="sideList">${sideButtons}</div>
-      <div class="diff-group">
-        <p class="diff-label">시나리오</p>
-        <div class="diff-pills" id="scenarioPills">${scenarioButtons}</div>
+
+      <!-- v0.4.2-d1: 모드 탭 -->
+      <div class="mode-tabs" id="modeTabs">
+        <button class="mode-tab" data-mode="campaign" data-selected="true">일반 캠페인</button>
+        <button class="mode-tab" data-mode="mission">미션 모드</button>
       </div>
-      <div class="diff-group">
-        <p class="diff-label">난이도 (v0.4.0-a에서는 UI만, 실 적용은 다음 패치)</p>
-        <div class="diff-pills" id="diffPills">${diffButtons}</div>
+
+      <!-- 일반 캠페인 패널 -->
+      <div class="mode-panel" id="campaignPanel">
+        <div class="side-list" id="sideList">${sideButtons}</div>
+        <div class="diff-group">
+          <p class="diff-label">시나리오</p>
+          <div class="diff-pills" id="scenarioPills">${scenarioButtons}</div>
+        </div>
+        <div class="diff-group">
+          <p class="diff-label">난이도 (v0.4.0-a에서는 UI만, 실 적용은 다음 패치)</p>
+          <div class="diff-pills" id="diffPills">${diffButtons}</div>
+        </div>
       </div>
+
+      <!-- 미션 모드 패널 -->
+      <div class="mode-panel" id="missionPanel" style="display:none">
+        <p class="mission-hint">미션 선택 — 각 미션은 고정 시작 상태 + 목표가 정해져 있습니다</p>
+        <div class="mission-list" id="missionList">${missionCards}</div>
+      </div>
+
       <button id="startGameBtn" class="primary start-btn" disabled>시작</button>
     </div>
 
     <style>
       .side-modal {
-        max-width: 580px; width: 100%;
+        max-width: 720px; width: 100%;
         background: rgba(13, 24, 42, 0.96);
         border: 1px solid rgba(124, 171, 220, 0.32);
         border-radius: 18px;
@@ -353,17 +396,122 @@ function showSideSelectModal(onConfirm) {
       .side-modal .start-btn:disabled {
         opacity: .4; cursor: not-allowed;
       }
+
+      /* v0.4.2-d1: 모드 탭 */
+      .mode-tabs {
+        display: flex; gap: 0;
+        margin: 16px 0 18px;
+        border-bottom: 1px solid rgba(124, 171, 220, 0.22);
+      }
+      .mode-tab {
+        flex: 1; padding: 11px 14px;
+        background: transparent;
+        border: none; color: #93a8c2;
+        font-size: 14px; font-weight: 600;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -1px;
+        transition: color .15s, border-color .15s;
+      }
+      .mode-tab:hover { color: #c5d8f2; }
+      .mode-tab[data-selected="true"] {
+        color: #ffd66b;
+        border-bottom-color: #ffd66b;
+      }
+
+      /* v0.4.2-d1: 미션 카드 그리드 */
+      .mission-hint {
+        color: #93a8c2; font-size: 12px;
+        margin: 0 0 12px; text-align: center;
+      }
+      .mission-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+      .mission-card {
+        text-align: left;
+        background: rgba(20, 32, 52, 0.7);
+        border: 1px solid rgba(124, 171, 220, 0.22);
+        border-radius: 10px;
+        padding: 12px 14px;
+        color: #eaf3ff;
+        cursor: pointer;
+        transition: border-color .15s, background .15s, transform .1s;
+      }
+      .mission-card:hover {
+        border-color: rgba(255, 214, 107, 0.5);
+        background: rgba(28, 42, 66, 0.85);
+      }
+      .mission-card[data-selected="true"] {
+        border-color: #ffd66b;
+        background: rgba(50, 42, 18, 0.5);
+      }
+      .mission-card .mission-name {
+        font-size: 15px; font-weight: 700;
+        color: #ffd66b; margin-bottom: 4px;
+      }
+      .mission-card .mission-desc {
+        font-size: 12px; color: #c5d8f2;
+        line-height: 1.4; margin-bottom: 8px;
+      }
+      .mission-card .mission-meta {
+        display: flex; flex-wrap: wrap; gap: 8px;
+        font-size: 11px; color: #93a8c2;
+      }
+      .mission-card .mission-meta span {
+        padding: 2px 7px;
+        background: rgba(124, 171, 220, 0.1);
+        border-radius: 4px;
+      }
     </style>
   `;
   document.body.appendChild(overlay);
 
   let selectedSide = null;
   let selectedDifficulty = "normal";
+  let selectedScenario = "short_72h";
+  let selectedMission = null;
+  let mode = "campaign";  // "campaign" | "mission"
   const startBtn = overlay.querySelector("#startGameBtn");
 
   function updateStartBtnState() {
-    startBtn.disabled = !selectedSide;
+    if (mode === "campaign") {
+      startBtn.disabled = !selectedSide;
+    } else {
+      startBtn.disabled = !selectedMission;
+    }
   }
+
+  // v0.4.2-d1: 모드 탭 전환
+  const campaignPanel = overlay.querySelector("#campaignPanel");
+  const missionPanel = overlay.querySelector("#missionPanel");
+  overlay.querySelector("#modeTabs").addEventListener("click", (e) => {
+    const tab = e.target.closest(".mode-tab");
+    if (!tab) return;
+    overlay.querySelectorAll(".mode-tab").forEach(el => el.removeAttribute("data-selected"));
+    tab.setAttribute("data-selected", "true");
+    mode = tab.dataset.mode;
+    if (mode === "campaign") {
+      campaignPanel.style.display = "";
+      missionPanel.style.display = "none";
+    } else {
+      campaignPanel.style.display = "none";
+      missionPanel.style.display = "";
+    }
+    updateStartBtnState();
+  });
+
+  // v0.4.2-d1: 미션 카드 선택
+  overlay.querySelector("#missionList").addEventListener("click", (e) => {
+    const card = e.target.closest(".mission-card");
+    if (!card) return;
+    overlay.querySelectorAll(".mission-card").forEach(el => el.removeAttribute("data-selected"));
+    card.setAttribute("data-selected", "true");
+    selectedMission = card.dataset.mission;
+    updateStartBtnState();
+  });
 
   overlay.querySelector("#sideList").addEventListener("click", (e) => {
     const card = e.target.closest(".side-card");
@@ -383,7 +531,6 @@ function showSideSelectModal(onConfirm) {
   });
 
   // v0.4.1: 시나리오 픽
-  let selectedScenario = "short_72h";
   overlay.querySelector("#scenarioPills").addEventListener("click", (e) => {
     const pill = e.target.closest(".scenario-pill");
     if (!pill) return;
@@ -393,16 +540,25 @@ function showSideSelectModal(onConfirm) {
   });
 
   startBtn.addEventListener("click", () => {
-    if (!selectedSide) return;
-    overlay.remove();
-    onConfirm(selectedSide, selectedDifficulty, selectedScenario);
+    if (mode === "campaign") {
+      if (!selectedSide) return;
+      overlay.remove();
+      onConfirm(selectedSide, selectedDifficulty, selectedScenario, null);
+    } else {
+      if (!selectedMission) return;
+      const m = MISSIONS[selectedMission];
+      if (!m) return;
+      overlay.remove();
+      // 미션은 권장 진영 + 베이스 시나리오 강제
+      onConfirm(m.recommendedSide, "normal", m.baseScenario, selectedMission);
+    }
   });
 
   const quickBtn = overlay.querySelector("#quickStartBtn");
   if (quickBtn && last) {
     quickBtn.addEventListener("click", () => {
       overlay.remove();
-      onConfirm(last.side, last.difficulty, last.scenarioId || "short_72h");
+      onConfirm(last.side, last.difficulty, last.scenarioId || "short_72h", null);
     });
   }
   const newBtn = overlay.querySelector("#newChoiceBtn");
@@ -452,6 +608,12 @@ function resetGame() {
     totalTurnsOverride: campaign?.totalTurns  // v0.4.1: 84턴 override
   });
   initializeDecks(state, data.cardsChina, data.cardsTaiwan);
+
+  // v0.4.2-d1: 미션 모드면 미션 적용 (initial state override)
+  if (campaign?.missionId && MISSIONS[campaign.missionId]) {
+    applyMissionToState(state, MISSIONS[campaign.missionId]);
+  }
+
   // v0.4.0-d2: 재시작 시 final modal guard 리셋 + DAY pending 정리
   finalModalShown = false;
   pendingDayModal = false;
@@ -493,7 +655,12 @@ function renderCampaignBadge() {
   else if (campaign.selectedSide === "china") color = "#ff8b94";
   else color = "rgba(255,255,255,.55)";
   // v0.4.1.1: 시나리오 이름 명시 표시
-  badge.innerHTML = `<span style="color:${color};font-weight:700">▸ ${sideName}</span> <span style="color:rgba(255,255,255,.5)">· ${diffName} · ${scenarioName}</span>`;
+  // v0.4.2-d1: 미션 모드면 미션명 추가
+  let missionTag = "";
+  if (campaign.missionId && MISSIONS[campaign.missionId]) {
+    missionTag = ` <span style="color:#ffd66b;font-weight:700">· 미션: ${MISSIONS[campaign.missionId].name}</span>`;
+  }
+  badge.innerHTML = `<span style="color:${color};font-weight:700">▸ ${sideName}</span> <span style="color:rgba(255,255,255,.5)">· ${diffName} · ${scenarioName}</span>${missionTag}`;
 
   // v0.4.1.1: BUILD 라인의 RULES 라벨도 시나리오에 맞게 갱신
   const buildBadge = titleEl.querySelector("div:not(.campaign-badge)");
@@ -574,8 +741,10 @@ function bindEvents() {
   dom.resetBtn.addEventListener("click", () => {
     if (!confirm("현재 판을 버리고 새 게임을 시작할까요?")) return;
     // v0.4.0-a: 진영 선택 다시
-    showSideSelectModal((selectedSide, difficulty, scenarioId) => {
+    // v0.4.2-d1: missionId 추가
+    showSideSelectModal((selectedSide, difficulty, scenarioId, missionId) => {
       campaign = createCampaignState(selectedSide, difficulty, scenarioId);
+      if (missionId) campaign.missionId = missionId;
       saveLastChoice(selectedSide, difficulty, scenarioId);
       resetGame();
       dom.runTurnBtn.disabled = false;
@@ -1217,7 +1386,11 @@ function outcomeLabel(id) {
     china_capital_win: "중국 승리: 수도 장악",
     china_capital_pressure_win: "중국 승리: 수도권 압박",
         taiwan_political_collapse_win: "대만 승리: 중국 정치압박 붕괴",
-    taiwan_survival_win: state?.persistent?.alliedIntervention?.active ? `대만 승리: 동맹 개입 후 ${formatSurvivalDuration()} 생존` : `대만 승리: ${formatSurvivalDuration()} 생존`
+    taiwan_survival_win: state?.persistent?.alliedIntervention?.active ? `대만 승리: 동맹 개입 후 ${formatSurvivalDuration()} 생존` : `대만 승리: ${formatSurvivalDuration()} 생존`,
+    // v0.4.2-d1: 미션 outcome
+    mission_complete: `미션 성공: ${state?.mission?.name || ""}`,
+    mission_failed: `미션 실패: ${state?.mission?.name || ""}`,
+    mission_timeout: `미션 시간 초과: ${state?.mission?.name || ""}`
   };
   return labels[id] || id;
 }
@@ -1988,8 +2161,9 @@ function showFinalResultModal() {
   // 진영 선택으로
   overlay.querySelector("#finalRestartNewBtn").addEventListener("click", () => {
     overlay.remove();
-    showSideSelectModal((selectedSide, difficulty, scenarioId) => {
+    showSideSelectModal((selectedSide, difficulty, scenarioId, missionId) => {
       campaign = createCampaignState(selectedSide, difficulty, scenarioId);
+      if (missionId) campaign.missionId = missionId;
       saveLastChoice(selectedSide, difficulty, scenarioId);
       resetGame();
       dom.runTurnBtn.disabled = false;
