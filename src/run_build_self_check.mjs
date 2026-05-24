@@ -59,10 +59,11 @@ if (!indexHtml.includes(`<title>해협의 72시간 - ${BUILD_TAG}`)) {
 }
 console.log(`  ✓ <title> ${BUILD_TAG} 포함`);
 
-// 5. 헤더 span에 BUILD_TAG 포함
-const headerPattern = new RegExp(`<span>Strait 72 · ${BUILD_TAG.replace(/\./g, "\\.")}`);
-if (!headerPattern.test(indexHtml)) {
-  const headerMatch = indexHtml.match(/<span>Strait 72 ·[^<]*<\/span>/);
+// 5. 헤더 span에 BUILD_TAG 포함 (v0.4.5: build-label class 권장, 기존 패턴도 허용)
+const headerPatternNew = new RegExp(`<span class="build-label">${BUILD_TAG.replace(/\./g, "\\.")}`);
+const headerPatternOld = new RegExp(`<span>Strait 72 · ${BUILD_TAG.replace(/\./g, "\\.")}`);
+if (!headerPatternNew.test(indexHtml) && !headerPatternOld.test(indexHtml)) {
+  const headerMatch = indexHtml.match(/<span(?: class="build-label")?>[^<]*<\/span>/);
   fail(`헤더 span이 BUILD_TAG "${BUILD_TAG}"를 포함하지 않음. 현재: "${headerMatch?.[0] || "없음"}"`);
 }
 console.log(`  ✓ 헤더 span ${BUILD_TAG} 포함`);

@@ -69,12 +69,13 @@ let dayAutoCloseEnabled = false;   // DAY 요약 자동 닫기 토글 (기본 OF
 let pendingDayModal = false;       // DAY 모달이 떠 있는지
 let autoToNextDayMode = false;     // "다음 DAY까지 자동 진행" 모드
 let finalModalShown = false;       // v0.4.0-d2: 최종 결과 모달 1회 표시 guard
+let lastAutoSaveResult = null;     // v0.4.5: 마지막 자동 저장 결과 (DAY 모달에 표시)
 
 window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.4.4";
+const EXPECTED_BUILD = "v0.4.5";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -948,14 +949,21 @@ function bindEvents() {
       const r = saveGame(state, campaign, BUILD_TAG, "manual");
       if (r.ok) {
         const sizeKb = (r.size / 1024).toFixed(1);
-        // 짧은 토스트 — 버튼 라벨 잠시 바꿈
+        // v0.4.5: 색 변경 + transition 추가
         const origText = dom.saveBtn.textContent;
+        const origBg = dom.saveBtn.style.background;
+        const origColor = dom.saveBtn.style.color;
         dom.saveBtn.textContent = `✓ 저장됨 (${sizeKb}KB)`;
+        dom.saveBtn.style.background = "#80efb1";
+        dom.saveBtn.style.color = "#1a1d2e";
+        dom.saveBtn.style.transition = "background .2s, color .2s";
         dom.saveBtn.disabled = true;
         setTimeout(() => {
           dom.saveBtn.textContent = origText;
+          dom.saveBtn.style.background = origBg;
+          dom.saveBtn.style.color = origColor;
           dom.saveBtn.disabled = false;
-        }, 1500);
+        }, 1800);
       } else {
         alert("저장 실패: " + r.error);
       }
@@ -1266,14 +1274,15 @@ function runManualTurn() {
   const justFinishedTurn = state.turn - 1;
   if (!state.outcome && isDayEndTurn(justFinishedTurn)) {
     const dayN = dayNumberForTurn(justFinishedTurn);
-    showDayEndModal(dayN);
-    // v0.4.3: DAY 모달이 떴음을 튜토리얼에 알림
-    if (isTutorialActive()) advanceTutorial("day_end");
-    // v0.4.4: DAY 종료 시 자동 저장
+    // v0.4.4: DAY 종료 시 자동 저장 (모달보다 먼저, 그 결과를 모달에 표시)
     const r = saveGame(state, campaign, BUILD_TAG, "auto");
     if (!r.ok) {
       console.warn("[save] auto save failed:", r.error);
     }
+    lastAutoSaveResult = r;  // v0.4.5: showDayEndModal에서 사용
+    showDayEndModal(dayN);
+    // v0.4.3: DAY 모달이 떴음을 튜토리얼에 알림
+    if (isTutorialActive()) advanceTutorial("day_end");
   }
 
   // v0.4.4: outcome 발생 시 저장 삭제 (게임 종료 → 이어할 게 없음)
@@ -1773,7 +1782,11 @@ function showDayEndModal(dayNumber) {
     <div class="day-modal">
       <div class="day-header">
         <h2>${escapeHtml(report.dayLabel)} 종료</h2>
-        <p class="day-subtitle">T${report.turnRange[0]}-${report.turnRange[1]} 진행 완료</p>
+        <p class="day-subtitle">T${report.turnRange[0]}-${report.turnRange[1]} 진행 완료${
+          lastAutoSaveResult?.ok
+            ? ` <span style="color:#80efb1;font-size:11px;margin-left:8px">💾 자동 저장됨 (${(lastAutoSaveResult.size/1024).toFixed(1)}KB)</span>`
+            : ""
+        }</p>
       </div>
 
       ${occupationLines ? `<section><h3>점령 변화</h3><ul class="occu-list">${occupationLines}</ul></section>` : ""}
