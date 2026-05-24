@@ -64,7 +64,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.4.1.3";
+const EXPECTED_BUILD = "v0.4.1.4";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -1200,9 +1200,13 @@ function axisName(id) {
 }
 
 function formatSurvivalDuration() {
-  const days = TOTAL_GAME_HOURS / 24;
+  // v0.4.1.4: state.totalTurns 우선 (84턴 캠페인에서 30턴/7.5일로 표시되던 버그 fix)
+  const turns = state?.totalTurns || GAME_RULES.totalTurns;
+  const hoursPerTurn = GAME_RULES.hoursPerTurn;
+  const totalHours = turns * hoursPerTurn;
+  const days = totalHours / 24;
   const label = Number.isInteger(days) ? `${days}일` : `${days.toFixed(1)}일`;
-  return `${GAME_RULES.totalTurns}턴 / ${label}`;
+  return `${turns}턴 / ${label}`;
 }
 
 function outcomeLabel(id) {

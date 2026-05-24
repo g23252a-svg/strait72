@@ -119,7 +119,9 @@ export function calculateFinalScore(state, side) {
 
     // 종료 시점 보너스 (오래 버틴 만큼)
     if (outcome === "taiwan_survival_win") {
-      components.push({ label: "30턴 완주", delta: 5 });
+      // v0.4.1.4: 시나리오 길이에 맞는 라벨
+      const totalT = state.totalTurns || 30;
+      components.push({ label: `${totalT}턴 완주`, delta: 5 });
       score += 5;
     } else if (outcome === "taiwan_political_collapse_win") {
       const ppC = Math.round((g.chinaPoliticalPressure / 100) * 8);
@@ -229,30 +231,39 @@ export function generateFinalInterpretation(outcome, score, side, state = null, 
   // d4: taiwan_survival_win에서 영토 상태에 따라 더 정확한 해설
   if (outcome === "taiwan_survival_win" && side === "taiwan" && state) {
     const t = analyzeTerritorialState(state);
+    // v0.4.1.4: 시나리오에 따른 시간 표현
+    //   short_72h (30턴): "72시간을 버텨냈습니다"
+    //   full_21d  (84턴): "21일 장기전을 버텨냈습니다"
+    const isLong = (state.totalTurns || 30) > 30;
+    const durationPhrase = isLong ? "21일 장기전을" : "72시간을";
+
     if (grade === "S") {
-      // S 하드 조건 통과: 거의 무손실
-      return "방어선이 거의 흔들리지 않은 채 72시간을 버텨냈습니다. 동맹 개입 유도가 거의 완벽했습니다.";
+      return `방어선이 거의 흔들리지 않은 채 ${durationPhrase} 버텨냈습니다. 동맹 개입 유도가 거의 완벽했습니다.`;
     }
     if (grade === "A") {
       if (t.lostCount === 0) {
-        return "방어선은 흔들렸지만 영토 손실 없이 동맹 개입을 끌어내며 생존에 성공했습니다.";
+        return isLong
+          ? "방어선은 흔들렸지만 영토 손실 없이 동맹 개입 후 장기전까지 생존에 성공했습니다."
+          : "방어선은 흔들렸지만 영토 손실 없이 동맹 개입을 끌어내며 생존에 성공했습니다.";
       } else if (t.lostCount === 1) {
-        return `${t.lostNames[0] || "1개 지역"} 상실이라는 대가를 치렀지만, 수도권을 지키고 동맹 개입을 끌어내며 생존에 성공했습니다.`;
+        return `${t.lostNames[0] || "1개 지역"} 상실이라는 대가를 치렀지만, 수도권을 지키고 ${isLong ? "장기전까지" : "동맹 개입을 끌어내며"} 생존에 성공했습니다.`;
       } else {
-        return `${t.lostCount}곳의 영토를 상실했지만 정부 기능과 지휘 체계를 끝까지 유지하며 생존에 성공했습니다.`;
+        return `${t.lostCount}곳의 영토를 상실했지만 정부 기능과 지휘 체계를 끝까지 유지하며 ${isLong ? "21일 장기전을 끝까지" : ""} 생존에 성공했습니다.`.replace("  ", " ").trim() + (isLong ? "" : "");
       }
     }
     if (grade === "B") {
       if (t.capitalAtRisk) {
-        return `대만은 ${t.lostCount}곳의 영토를 상실하고 수도권까지 압박받았지만, 정부 기능을 유지하며 동맹 개입 이후까지 버텨냈습니다. 다음 국면은 매우 불안정합니다.`;
+        return `대만은 ${t.lostCount}곳의 영토를 상실하고 수도권까지 압박받았지만, 정부 기능을 유지하며 ${isLong ? "21일 장기전" : "동맹 개입 이후"}까지 버텨냈습니다. 다음 국면은 매우 불안정합니다.`;
       }
-      return `대만은 남부 거점들을 상실했지만, 타이베이 정부 기능과 지휘 체계를 끝까지 유지하며 동맹 개입 이후 생존에 성공했습니다.`;
+      return `대만은 남부 거점들을 상실했지만, 타이베이 정부 기능과 지휘 체계를 끝까지 유지하며 ${isLong ? "장기전을 완주했습니다" : "동맹 개입 이후 생존에 성공했습니다"}.`;
     }
     if (grade === "C") {
-      return `방어선 곳곳이 무너지고 수도권까지 압박받았지만 시간을 벌어 동맹 개입에 닿았습니다. 다음 국면은 매우 불안정합니다.`;
+      return `방어선 곳곳이 무너지고 수도권까지 압박받았지만 시간을 벌어 ${isLong ? "장기전을 끝까지 버텼습니다" : "동맹 개입에 닿았습니다"}. 다음 국면은 매우 불안정합니다.`;
     }
     if (grade === "D") {
-      return "방어선이 와해된 채 시간만 흘렀습니다. 동맹 개입 도착 전 사실상 전투력이 소진되었습니다.";
+      return isLong
+        ? "방어선이 와해된 채 21일이 흘렀습니다. 사실상 군사적으로는 무력화되었습니다."
+        : "방어선이 와해된 채 시간만 흘렀습니다. 동맹 개입 도착 전 사실상 전투력이 소진되었습니다.";
     }
   }
 

@@ -285,6 +285,29 @@ export function suggestChinaAxis(state, axes) {
     scores[axis.id] = s + repetitionPenalty(axis.id);
   }
 
+  // v0.4.1.4: ACT 3 + 중국 자원 소진 → 자살 돌격 방지
+  // 사용자 명세: tempo ≤ 10 + supply ≤ 10 시 상륙/북부 가중치 대폭 감소,
+  // 봉쇄/외교/정치 쪽으로 전환
+  const isAct3 = (state.persistent?.lastActId === "ACT_3") || (state.turn >= 45);
+  const exhausted = (g.chinaTempo || 0) <= 10 && (g.chinaSupply || 0) <= 10;
+  if (isAct3 && exhausted) {
+    // 군사 행동 가중치 감소
+    if (scores.south_landing !== undefined) scores.south_landing -= 8;
+    if (scores.north_pressure !== undefined) scores.north_pressure -= 8;
+    // 비군사적 압박 가중치 증가
+    if (scores.naval_blockade !== undefined) scores.naval_blockade += 3;
+    if (scores.information_warfare !== undefined) scores.information_warfare += 4;
+    if (scores.diplomatic_pressure !== undefined) scores.diplomatic_pressure += 6;
+    // 1회 로그 (state.persistent.milestones에 기록)
+    if (!state.persistent.milestones) state.persistent.milestones = {};
+    if (!state.persistent.milestones.chinaExhaustedAt) {
+      state.persistent.milestones.chinaExhaustedAt = state.turn;
+      state.thisTurn?.operationLog?.push(
+        "▶ 중국군 공세 둔화 — 보급 고갈로 상륙 작전 축소. 제한전·협상 우위로 전환."
+      );
+    }
+  }
+
   let best = null, bestScore = -Infinity;
   for (const [id, sc] of Object.entries(scores)) {
     if (sc > bestScore) { best = id; bestScore = sc; }
