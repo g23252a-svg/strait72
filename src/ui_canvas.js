@@ -6,17 +6,17 @@
 // =====================================================================
 
 // v0.5-a: 전략맵 이미지 (taiwan_strategic_map.png) 기준 정규화 좌표
-// 이미지 16:9 (1920x1080 등) 위에서 거점 픽셀 위치를 정규화한 값.
-// 화롄은 이미지에 라벨이 안 보일 수 있어 코드에서 별도로 그림.
+// v0.5-a.1: 좌표를 지도의 실제 라벨 위치에 맞춰 미세조정 + r 축소 (라벨 가림 방지)
+// 이미지에 한글 라벨이 인쇄돼 있으므로 토큰은 라벨 옆 *작은 상태 인디케이터* 역할.
 export const PROVINCE_LAYOUT = Object.freeze({
-  taipei:    { x: 0.595, y: 0.185, r: 40, label: "타이베이" },
-  keelung:   { x: 0.662, y: 0.230, r: 34, label: "지룽" },
-  taoyuan:   { x: 0.522, y: 0.265, r: 36, label: "타오위안" },
-  taichung:  { x: 0.482, y: 0.400, r: 39, label: "타이중" },
-  tainan:    { x: 0.422, y: 0.560, r: 36, label: "타이난" },
-  kaohsiung: { x: 0.468, y: 0.705, r: 42, label: "가오슝" },
-  hualien:   { x: 0.620, y: 0.515, r: 37, label: "화롄" },
-  strait:    { x: 0.230, y: 0.460, r: 48, label: "대만 해협" }
+  taipei:    { x: 0.600, y: 0.205, r: 22, label: "타이베이" },
+  keelung:   { x: 0.670, y: 0.240, r: 20, label: "지룽" },
+  taoyuan:   { x: 0.540, y: 0.270, r: 20, label: "타오위안" },
+  taichung:  { x: 0.485, y: 0.405, r: 22, label: "타이중" },
+  tainan:    { x: 0.435, y: 0.565, r: 20, label: "타이난" },
+  kaohsiung: { x: 0.480, y: 0.715, r: 24, label: "가오슝" },
+  hualien:   { x: 0.595, y: 0.560, r: 21, label: "화롄" },
+  strait:    { x: 0.230, y: 0.460, r: 32, label: "대만 해협" }
 });
 
 const STAGE_LABELS = Object.freeze({
@@ -472,15 +472,29 @@ function drawProvinces(ctx, w, h, state, meta) {
     }
 
     ctx.shadowBlur = 0;
-    ctx.fillStyle = "#f4f8ff";
-    ctx.font = "800 18px system-ui";
-    ctx.textAlign = "center";
-    ctx.fillText(pos.label, x, y + 5);
+    // v0.5-a.1: 지도 이미지에 한글 라벨이 이미 인쇄돼 있으므로 코드 라벨 생략.
+    // 예외: strait(바다라 이미지 라벨이 옅음), hualien(이미지에 라벨 없음).
+    const showCodeLabel = id === "strait" || id === "hualien";
+    if (showCodeLabel) {
+      ctx.fillStyle = "#f4f8ff";
+      ctx.font = id === "strait" ? "800 18px system-ui" : "700 13px system-ui";
+      ctx.textAlign = "center";
+      ctx.shadowColor = "rgba(0, 0, 0, 0.9)";
+      ctx.shadowBlur = 4;
+      ctx.fillText(pos.label, x, y + (id === "hualien" ? pos.r + 14 : 5));
+      ctx.shadowBlur = 0;
+    }
 
     // ── 상태 배지 ──
-    const stageLabel = province?.landingStage && province.landingStage !== "none"
-      ? STAGE_LABELS[province.landingStage]
-      : CONTROL_LABELS[province?.controlStage] || "";
+    // v0.5-a.1: 안정 방어 + 상륙 없음일 땐 배지 숨김 (지도 가독성).
+    // 위협 상태 (contested / beachhead / landing 등)만 배지 표시.
+    const isThreat = (province?.landingStage && province.landingStage !== "none")
+                  || (province?.controlStage && province.controlStage !== "stable_defense");
+    const stageLabel = isThreat
+      ? (province?.landingStage && province.landingStage !== "none"
+          ? STAGE_LABELS[province.landingStage]
+          : CONTROL_LABELS[province?.controlStage] || "")
+      : "";
 
     if (stageLabel) {
       const badge = badgeStyleFor(province);
@@ -559,15 +573,16 @@ function colorForProvince(province) {
     return { fill: "rgba(74, 143, 220, .18)", stroke: "rgba(122, 190, 255, .66)", glow: "rgba(90,169,255,.28)" };
   }
   if (province.controlStage === "china_control") {
-    return { fill: "rgba(255, 75, 88, .44)", stroke: "rgba(255, 120, 132, .92)", glow: "rgba(255,75,88,.36)" };
+    return { fill: "rgba(255, 75, 88, .55)", stroke: "rgba(255, 120, 132, .95)", glow: "rgba(255,75,88,.45)" };
   }
   if (province.controlStage === "beachhead_established" || province.landingStage === "beachhead") {
-    return { fill: "rgba(245, 184, 75, .42)", stroke: "rgba(255, 217, 130, .9)", glow: "rgba(245,184,75,.36)" };
+    return { fill: "rgba(245, 184, 75, .50)", stroke: "rgba(255, 217, 130, .95)", glow: "rgba(245,184,75,.4)" };
   }
   if (province.controlStage === "coastal_breach" || province.controlStage === "contested") {
-    return { fill: "rgba(255, 145, 75, .30)", stroke: "rgba(255, 176, 100, .86)", glow: "rgba(255,145,75,.25)" };
+    return { fill: "rgba(255, 145, 75, .42)", stroke: "rgba(255, 176, 100, .9)", glow: "rgba(255,145,75,.3)" };
   }
-  return { fill: "rgba(73, 180, 135, .32)", stroke: "rgba(111, 235, 176, .78)", glow: "rgba(79,209,139,.25)" };
+  // v0.5-a.1: 안정 방어 상태는 매우 옅게 — 지도 라벨이 잘 보이도록
+  return { fill: "rgba(73, 180, 135, .14)", stroke: "rgba(111, 235, 176, .45)", glow: "rgba(79,209,139,.15)" };
 }
 
 function roundRect(ctx, x, y, width, height, radius) {

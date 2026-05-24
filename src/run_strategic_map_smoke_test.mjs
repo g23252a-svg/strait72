@@ -30,13 +30,13 @@ console.log("\n1+2+3. PROVINCE_LAYOUT 새 좌표 + 정규화 + 거점 수");
 const { PROVINCE_LAYOUT } = await import("./ui_canvas.js");
 
 const expected = {
-  taipei:    { x: 0.595, y: 0.185 },
-  keelung:   { x: 0.662, y: 0.230 },
-  taoyuan:   { x: 0.522, y: 0.265 },
-  taichung:  { x: 0.482, y: 0.400 },
-  tainan:    { x: 0.422, y: 0.560 },
-  kaohsiung: { x: 0.468, y: 0.705 },
-  hualien:   { x: 0.620, y: 0.515 },
+  taipei:    { x: 0.600, y: 0.205 },
+  keelung:   { x: 0.670, y: 0.240 },
+  taoyuan:   { x: 0.540, y: 0.270 },
+  taichung:  { x: 0.485, y: 0.405 },
+  tainan:    { x: 0.435, y: 0.565 },
+  kaohsiung: { x: 0.480, y: 0.715 },
+  hualien:   { x: 0.595, y: 0.560 },
   strait:    { x: 0.230, y: 0.460 }
 };
 

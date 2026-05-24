@@ -34,16 +34,19 @@ if (!newTag || !/^v\d+\.\d+\.\d+/.test(newTag)) {
   process.exit(1);
 }
 
-// cache buster prefix: "042d1" / "043" / "044" / "045"
+// cache buster prefix: "042d1" / "043" / "044" / "045" / "050a1"
 function bareTag(tag) {
   // v0.4.5      → 045
   // v0.4.5-a    → 045a
   // v0.4.2-d1   → 042d1
   // v0.5.0      → 050
-  const m = tag.match(/^v(\d+)\.(\d+)\.(\d+)(?:-([a-z0-9]+))?/i);
+  // v0.5.0-a.1  → 050a1  (점은 빼서 합침)
+  const m = tag.match(/^v(\d+)\.(\d+)\.(\d+)(?:-([a-z0-9.]+))?/i);
   if (!m) return tag.replace(/[.-]/g, "");
   const [, major, minor, patch, suffix] = m;
-  return `${major}${minor}${patch}${suffix || ""}`;
+  // suffix에서 점은 제거 (a.1 → a1)
+  const cleanSuffix = suffix ? suffix.replace(/\./g, "") : "";
+  return `${major}${minor}${patch}${cleanSuffix}`;
 }
 
 function todayStr() {
