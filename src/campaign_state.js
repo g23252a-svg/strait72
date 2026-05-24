@@ -54,10 +54,25 @@ export function saveLastChoice(side, difficulty) {
   } catch { /* ignore */ }
 }
 
-export function createCampaignState(side = "both", difficulty = "normal") {
+// =====================================================================
+// v0.4.1: 시나리오 — 캠페인 길이 결정
+// ---------------------------------------------------------------------
+//   short_72h: 30턴 / 7.5일 — 기존 위기 모드 (ACT 1만)
+//   full_21d:  84턴 / 21일 — 전체 캠페인 (ACT 1+2+3)
+// 기본은 short_72h (호환). UI에서 선택 가능.
+// =====================================================================
+export const SCENARIOS = {
+  short_72h: { id: "short_72h", name: "72시간 위기", totalTurns: 30, description: "초기 상륙 저지 단편 (~30분)" },
+  full_21d:  { id: "full_21d",  name: "21일 캠페인", totalTurns: 84, description: "ACT 1~3 전체 (~2시간)" }
+};
+
+export function createCampaignState(side = "both", difficulty = "normal", scenarioId = "short_72h") {
+  const scenario = SCENARIOS[scenarioId] || SCENARIOS.short_72h;
   return {
     selectedSide: side,
     difficulty,
+    scenarioId: scenario.id,
+    totalTurns: scenario.totalTurns,
     developerMode: side === "both",
     startedAt: Date.now()
   };

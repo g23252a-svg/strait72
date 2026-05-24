@@ -21,7 +21,7 @@ import {
   decideTaiwanFocus
 } from "./ai_decisions.js";
 import {
-  SIDES, DIFFICULTIES,
+  SIDES, DIFFICULTIES, SCENARIOS,
   loadLastChoice, saveLastChoice,
   createCampaignState, isPlayerSide, isAISide
 } from "./campaign_state.js";
@@ -63,7 +63,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.4.0-d4.2";
+const EXPECTED_BUILD = "v0.4.1";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -110,8 +110,8 @@ async function init() {
   await loadData();
 
   // v0.4.0-a: 진영 선택 화면을 먼저 보여줌
-  showSideSelectModal((selectedSide, difficulty) => {
-    campaign = createCampaignState(selectedSide, difficulty);
+  showSideSelectModal((selectedSide, difficulty, scenarioId) => {
+    campaign = createCampaignState(selectedSide, difficulty, scenarioId);
     saveLastChoice(selectedSide, difficulty);
     resetGame();
     bindEvents();
@@ -160,6 +160,14 @@ function showSideSelectModal(onConfirm) {
     </button>
   `).join("");
 
+  // v0.4.1: 시나리오 (캠페인 길이)
+  const scenarioButtons = Object.values(SCENARIOS).map(s => `
+    <button class="scenario-pill" data-scenario="${s.id}"${s.id === "short_72h" ? ' data-selected="true"' : ""}>
+      <span class="scenario-name">${s.name}</span>
+      <span class="scenario-desc">${s.description}</span>
+    </button>
+  `).join("");
+
   const quickStartHtml = last ? `
     <div class="quick-start">
       <button id="quickStartBtn" class="primary">
@@ -176,6 +184,10 @@ function showSideSelectModal(onConfirm) {
       <p class="subtitle">진영 선택</p>
       ${quickStartHtml}
       <div class="side-list" id="sideList">${sideButtons}</div>
+      <div class="diff-group">
+        <p class="diff-label">시나리오</p>
+        <div class="diff-pills" id="scenarioPills">${scenarioButtons}</div>
+      </div>
       <div class="diff-group">
         <p class="diff-label">난이도 (v0.4.0-a에서는 UI만, 실 적용은 다음 패치)</p>
         <div class="diff-pills" id="diffPills">${diffButtons}</div>
@@ -300,6 +312,26 @@ function showSideSelectModal(onConfirm) {
         background: rgba(124, 171, 220, .20);
         border-color: #7cabdc;
       }
+      /* v0.4.1: 시나리오 픽 */
+      .side-modal .scenario-pill {
+        flex: 1;
+        background: rgba(255,255,255,.04);
+        border: 1.5px solid rgba(255,255,255,.10);
+        border-radius: 8px;
+        padding: 10px 12px;
+        color: inherit;
+        cursor: pointer;
+        transition: all .15s;
+        display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+        text-align: left;
+      }
+      .side-modal .scenario-pill:hover { border-color: rgba(124, 171, 220, .55); }
+      .side-modal .scenario-pill[data-selected="true"] {
+        background: rgba(124, 171, 220, .20);
+        border-color: #7cabdc;
+      }
+      .side-modal .scenario-name { font-size: 13px; font-weight: 700; }
+      .side-modal .scenario-desc { font-size: 11px; color: rgba(234, 243, 255, .65); }
       .side-modal .start-btn {
         width: 100%;
         background: linear-gradient(180deg, #ffd66b, #d9a939);
@@ -345,17 +377,27 @@ function showSideSelectModal(onConfirm) {
     selectedDifficulty = pill.dataset.diff;
   });
 
+  // v0.4.1: 시나리오 픽
+  let selectedScenario = "short_72h";
+  overlay.querySelector("#scenarioPills").addEventListener("click", (e) => {
+    const pill = e.target.closest(".scenario-pill");
+    if (!pill) return;
+    overlay.querySelectorAll(".scenario-pill").forEach(el => el.removeAttribute("data-selected"));
+    pill.setAttribute("data-selected", "true");
+    selectedScenario = pill.dataset.scenario;
+  });
+
   startBtn.addEventListener("click", () => {
     if (!selectedSide) return;
     overlay.remove();
-    onConfirm(selectedSide, selectedDifficulty);
+    onConfirm(selectedSide, selectedDifficulty, selectedScenario);
   });
 
   const quickBtn = overlay.querySelector("#quickStartBtn");
   if (quickBtn && last) {
     quickBtn.addEventListener("click", () => {
       overlay.remove();
-      onConfirm(last.side, last.difficulty);
+      onConfirm(last.side, last.difficulty, "short_72h"); // 빠른 시작은 short
     });
   }
   const newBtn = overlay.querySelector("#newChoiceBtn");
@@ -401,7 +443,8 @@ function resetGame() {
     axes: data.axes,
     cardsChina: data.cardsChina,
     cardsTaiwan: data.cardsTaiwan,
-    events: data.events
+    events: data.events,
+    totalTurnsOverride: campaign?.totalTurns  // v0.4.1: 84턴 override
   });
   initializeDecks(state, data.cardsChina, data.cardsTaiwan);
   // v0.4.0-d2: 재시작 시 final modal guard 리셋 + DAY pending 정리
@@ -514,8 +557,8 @@ function bindEvents() {
   dom.resetBtn.addEventListener("click", () => {
     if (!confirm("현재 판을 버리고 새 게임을 시작할까요?")) return;
     // v0.4.0-a: 진영 선택 다시
-    showSideSelectModal((selectedSide, difficulty) => {
-      campaign = createCampaignState(selectedSide, difficulty);
+    showSideSelectModal((selectedSide, difficulty, scenarioId) => {
+      campaign = createCampaignState(selectedSide, difficulty, scenarioId);
       saveLastChoice(selectedSide, difficulty);
       resetGame();
       dom.runTurnBtn.disabled = false;
@@ -804,7 +847,7 @@ function runManualTurn() {
   rememberPicks("china", decisions.chinaCards);
   rememberPicks("taiwan", decisions.taiwanCards);
 
-  runTurn(state, decisions, indices);
+  runTurn(state, decisions, indices, campaign);
   if (state.outcome) {
     dom.runTurnBtn.disabled = true;
     dom.autoTurnBtn.disabled = true;
@@ -863,7 +906,7 @@ function checkedCardIds(side) {
 
 function render() {
   if (!state) return;
-  dom.turnCounter.textContent = formatTurnCounter(state.turn);
+  dom.turnCounter.textContent = formatTurnCounter(state.turn, state.totalTurns);
   dom.gameClock.textContent = formatGameTime(state.turn);
   dom.chinaClock.textContent = `${chinaHoursRemaining(state.turn)}h`;
   dom.outcomeChip.textContent = state.outcome
@@ -909,7 +952,7 @@ function drawCanvasOnly() {
   const focus = data.provinces.find(p => p.id === dom.taiwanFocusSelect.value);
   drawGameCanvas(dom.mapCanvas, state, {
     selectedProvince,
-    turnText: formatTurnCounter(state.turn),
+    turnText: formatTurnCounter(state.turn, state.totalTurns),
     axisName: axis?.name,
     focusName: focus?.name
   });
@@ -1876,8 +1919,8 @@ function showFinalResultModal() {
   // 진영 선택으로
   overlay.querySelector("#finalRestartNewBtn").addEventListener("click", () => {
     overlay.remove();
-    showSideSelectModal((selectedSide, difficulty) => {
-      campaign = createCampaignState(selectedSide, difficulty);
+    showSideSelectModal((selectedSide, difficulty, scenarioId) => {
+      campaign = createCampaignState(selectedSide, difficulty, scenarioId);
       saveLastChoice(selectedSide, difficulty);
       resetGame();
       dom.runTurnBtn.disabled = false;

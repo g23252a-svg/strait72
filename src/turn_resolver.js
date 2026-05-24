@@ -39,6 +39,9 @@ import {
   formatCombatLog
 } from "./combat_resolver.js";
 import { selectTargets } from "./target_selector.js";
+import {
+  currentActFor, actJustChanged, updateLastActId, computeAlliedPressure
+} from "./act_structure.js";
 
 // ---------------------------------------------------------------------
 // SECTION A. 효과 디스패처
@@ -679,7 +682,7 @@ export function phaseInternationalIntervention(state, events, timing) {
   return state;
 }
 
-export function phaseTurnEnd(state) {
+export function phaseTurnEnd(state, campaign = null) {
   // v0.3.10: 최근 전투 발생 지역 추적 — 다음 턴 시각 pulse용
   // combatResults[].targetId가 province id면 pulse 대상으로 기록
   const battles = state.thisTurn?.combatResults || [];
@@ -771,6 +774,35 @@ export function phaseTurnEnd(state) {
     outcome: state.outcome
   });
   if (!state.outcome) {
+    // v0.4.1: ACT 전환 감지 + 로그
+    if (campaign) {
+      const prevAct = state.persistent.lastActId;
+      const nowAct = currentActFor(state, campaign);
+      if (prevAct && prevAct !== nowAct.id) {
+        state.log.push({
+          turn: state.turn, phase: 7, name: "act_transition",
+          fromAct: prevAct, toAct: nowAct.id, actName: nowAct.name,
+          msg: `${nowAct.name} 진입: ${nowAct.description}`
+        });
+        // operationLog에도 강조
+        state.thisTurn?.operationLog?.push(`▶ ${nowAct.name} 진입: ${nowAct.description}`);
+      }
+      updateLastActId(state, campaign);
+
+      // ACT 3 동맹 압력 — 중국에 페널티 (매 턴 phaseTurnEnd에서)
+      const pressure = computeAlliedPressure(state, campaign);
+      if (pressure) {
+        if (pressure.japanSupplyDrain) {
+          addGauge(state, "chinaSupply", -pressure.japanSupplyDrain);
+          state.thisTurn?.operationLog?.push(`동맹 압력: 일본 감시로 중국 보급 -${pressure.japanSupplyDrain}`);
+        }
+        // usAttackPenalty와 koreaLogisticsBonus는 combat_resolver에서 참조하는 게 더 자연스러움
+        // 지금은 state.persistent.alliedPressureSnapshot에 저장만
+        state.persistent.alliedPressureSnapshot = pressure;
+      } else {
+        state.persistent.alliedPressureSnapshot = null;
+      }
+    }
     state.turn += 1;
     resetTurnState(state);
   }
@@ -785,7 +817,7 @@ export function phaseTurnEnd(state) {
  * 한 턴 통째로 실행.
  * decisions = { chinaAxis, taiwanFocus, chinaCards, taiwanCards, chinaFacedown, taiwanFacedown }
  */
-export function runTurn(state, decisions, indices) {
+export function runTurn(state, decisions, indices, campaign = null) {
   const { cardIndex, axisIndex, events } = indices;
   if (state.outcome) {
     state.log.push({ turn: state.turn, level: "warn", msg: "game already ended" });
@@ -799,7 +831,7 @@ export function runTurn(state, decisions, indices) {
   phaseDamagePolitical(state);
   phaseInternationalIntervention(state, events, "after_operation_resolution");
   phaseInternationalIntervention(state, events, "start_of_turn"); // 다음 턴 시작 전 평가
-  phaseTurnEnd(state);
+  phaseTurnEnd(state, campaign);
   return state;
 }
 
@@ -923,7 +955,9 @@ export function checkVictoryConditions(state) {
   // 미국 개입도 100은 즉시 승리가 아니라 동맹 개입 단계 진입이다.
   // 전투는 계속 진행되며, 대만은 최종 턴까지 생존하거나 중국 정치 압박을 100까지 올려야 승리한다.
   if (state.gauges.chinaPoliticalPressure >= 100) return "taiwan_political_collapse_win";
-  if (state.turn >= GAME_RULES.totalTurns) return "taiwan_survival_win";
+  // v0.4.1: state.totalTurns 우선 (campaign으로 84턴 override 가능). 기본 fallback은 GAME_RULES.
+  const effectiveTotalTurns = state.totalTurns || GAME_RULES.totalTurns;
+  if (state.turn >= effectiveTotalTurns) return "taiwan_survival_win";
 
   return null;
 }

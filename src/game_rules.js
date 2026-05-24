@@ -8,12 +8,12 @@
 // =====================================================================
 
 // 빌드 식별 (브라우저 캐시/오래된 파일 감지용)
-export const BUILD_TAG = "v0.4.0-d4.2";
+export const BUILD_TAG = "v0.4.1";
 export const BUILD_DATE = "2026-05-23";
 export const BUILD_FULL = `${BUILD_TAG}-${BUILD_DATE}`;
 
 export const GAME_RULES = Object.freeze({
-  version: "v0.4.0-d4.2",
+  version: "v0.4.1",
   totalTurns: 30,
   hoursPerTurn: 6,
   chinaInitialObjectiveHours: 72,  // 중국 속전속결 목표 시한
@@ -50,9 +50,10 @@ export function chinaHoursRemaining(currentTurn) {
 
 /**
  * 턴 진행도 표기 "TURN 5 / 20"
+ * v0.4.1: totalTurns 인자로 override 가능 (campaign 84턴 등)
  */
-export function formatTurnCounter(currentTurn) {
-  return `TURN ${currentTurn} / ${GAME_RULES.totalTurns}`;
+export function formatTurnCounter(currentTurn, totalTurns = null) {
+  return `TURN ${currentTurn} / ${totalTurns || GAME_RULES.totalTurns}`;
 }
 
 /**

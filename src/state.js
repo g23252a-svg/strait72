@@ -101,7 +101,7 @@ export function payCost(state, side, cost) {
  *   - provinces.json 그대로 복사 (수정 가능한 사본)
  *   - 게이지는 시나리오 초기값으로 (D-day 직전 긴장 상태)
  */
-export function createInitialState({ provinces, gameRules, axes, cardsChina, cardsTaiwan, events }) {
+export function createInitialState({ provinces, gameRules, axes, cardsChina, cardsTaiwan, events, totalTurnsOverride = null }) {
   const provincesById = {};
   for (const p of provinces) {
     provincesById[p.id] = {
@@ -111,9 +111,13 @@ export function createInitialState({ provinces, gameRules, axes, cardsChina, car
     };
   }
 
+  // v0.4.1: campaign.totalTurns override (84턴 등). 기본은 gameRules.totalTurns.
+  const effectiveTotalTurns = totalTurnsOverride || gameRules.totalTurns;
+
   return {
     turn: 1,
     rulesVersion: gameRules.version,
+    totalTurns: effectiveTotalTurns,  // v0.4.1: state에 기록 → checkVictoryConditions가 이걸 우선 사용
 
     // ---- 게이지 (시작 상태) ----
     gauges: {
