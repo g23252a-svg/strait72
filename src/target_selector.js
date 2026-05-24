@@ -285,27 +285,40 @@ export function suggestChinaAxis(state, axes) {
     scores[axis.id] = s + repetitionPenalty(axis.id);
   }
 
-  // v0.4.1.4: ACT 3 + 중국 자원 소진 → 자살 돌격 방지
-  // 사용자 명세: tempo ≤ 10 + supply ≤ 10 시 상륙/북부 가중치 대폭 감소,
-  // 봉쇄/외교/정치 쪽으로 전환
+  // v0.4.1.4 → v0.4.2-b1.1: ACT 3 + 중국 자원 소진 → 자살 돌격 방지
+  // playtest: -8 penalty 부족, 남부 상륙 여전히 top → 강화.
+  //   soft-exhausted (tempo ≤ 10 AND supply ≤ 10): -20/-16, dipl +8
+  //   hard-exhausted (tempo ≤ 0 OR supply ≤ 0): 추가 페널티로 사실상 soft-block
   const isAct3 = (state.persistent?.lastActId === "ACT_3") || (state.turn >= 45);
-  const exhausted = (g.chinaTempo || 0) <= 10 && (g.chinaSupply || 0) <= 10;
-  if (isAct3 && exhausted) {
-    // 군사 행동 가중치 감소
-    if (scores.south_landing !== undefined) scores.south_landing -= 8;
-    if (scores.north_pressure !== undefined) scores.north_pressure -= 8;
+  const softExhausted = (g.chinaTempo || 0) <= 10 && (g.chinaSupply || 0) <= 10;
+  const hardExhausted = (g.chinaTempo || 0) <= 0 || (g.chinaSupply || 0) <= 0;
+
+  if (isAct3 && softExhausted) {
+    // 군사 행동 가중치 대폭 감소
+    if (scores.south_landing !== undefined) scores.south_landing -= 20;
+    if (scores.north_pressure !== undefined) scores.north_pressure -= 16;
     // 비군사적 압박 가중치 증가
-    if (scores.naval_blockade !== undefined) scores.naval_blockade += 3;
-    if (scores.information_warfare !== undefined) scores.information_warfare += 4;
-    if (scores.diplomatic_pressure !== undefined) scores.diplomatic_pressure += 6;
+    if (scores.naval_blockade !== undefined) scores.naval_blockade += 5;
+    if (scores.information_warfare !== undefined) scores.information_warfare += 6;
+    if (scores.diplomatic_pressure !== undefined) scores.diplomatic_pressure += 8;
     // 1회 로그 (state.persistent.milestones에 기록)
     if (!state.persistent.milestones) state.persistent.milestones = {};
     if (!state.persistent.milestones.chinaExhaustedAt) {
       state.persistent.milestones.chinaExhaustedAt = state.turn;
       state.thisTurn?.operationLog?.push(
-        "▶ 중국군 공세 둔화 — 보급 고갈로 상륙 작전 축소. 제한전·협상 우위로 전환."
+        "▶ 중국군, 상륙작전 축소 — 보급 고갈로 외교·정보전 중심 전환."
       );
     }
+  }
+
+  if (isAct3 && hardExhausted) {
+    // tempo=0 또는 supply=0 soft-block: 추가 페널티로 점수상 사실상 못 고름
+    // (hard-block은 안 하고 점수만 -30 추가 → score < 0 보장)
+    if (scores.south_landing !== undefined) scores.south_landing -= 30;
+    if (scores.north_pressure !== undefined) scores.north_pressure -= 25;
+    // 비군사 추가 보너스
+    if (scores.naval_blockade !== undefined) scores.naval_blockade += 2;
+    if (scores.diplomatic_pressure !== undefined) scores.diplomatic_pressure += 2;
   }
 
   let best = null, bestScore = -Infinity;

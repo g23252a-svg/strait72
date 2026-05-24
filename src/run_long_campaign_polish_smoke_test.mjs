@@ -147,9 +147,9 @@ console.log(`  ✓ 소진 best axis: "${bestExhausted}" (비군사 전환)`);
 if (!exhaustedState.persistent.milestones.chinaExhaustedAt) {
   console.error(`FAIL: chinaExhaustedAt milestone 없음`); process.exit(1);
 }
-const exhaustedLog = exhaustedState.thisTurn.operationLog.some(s => s.includes("공세 둔화"));
+const exhaustedLog = exhaustedState.thisTurn.operationLog.some(s => s.includes("상륙작전 축소"));
 if (!exhaustedLog) {
-  console.error(`FAIL: '공세 둔화' 로그 없음`); process.exit(1);
+  console.error(`FAIL: '상륙작전 축소' 로그 없음`); process.exit(1);
 }
 console.log(`  ✓ milestone T${exhaustedState.persistent.milestones.chinaExhaustedAt}, 로그 출력`);
 
@@ -193,7 +193,7 @@ if (exhaustedState.persistent.milestones.chinaExhaustedAt !== firstTurn) {
   console.error(`FAIL: milestone 갱신됨 (멱등성 깨짐), ${firstTurn} → ${exhaustedState.persistent.milestones.chinaExhaustedAt}`);
   process.exit(1);
 }
-const dupLog = exhaustedState.thisTurn.operationLog.some(s => s.includes("공세 둔화"));
+const dupLog = exhaustedState.thisTurn.operationLog.some(s => s.includes("상륙작전 축소"));
 if (dupLog) {
   console.error(`FAIL: 공세 둔화 로그 두 번째 호출에도 출력됨`); process.exit(1);
 }
