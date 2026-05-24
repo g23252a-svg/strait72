@@ -74,9 +74,21 @@ let lastAutoSaveResult = null;     // v0.4.5: 마지막 자동 저장 결과 (DA
 
 window.addEventListener("DOMContentLoaded", init);
 
+// v0.5-c.3a.1: 사운드 시스템 전역 unlock — bindEvents 이전에 첫 클릭/터치를
+// 잡기 위해 DOMContentLoaded 직후 즉시 리스너를 건다. 진영 선택 모달의 첫
+// 클릭에서도 AudioContext가 활성화되도록 보장. capture=true로 모달 내부 클릭도 캐치.
+window.addEventListener("DOMContentLoaded", () => {
+  const unlock = () => {
+    if (!sound.isInitialized()) sound.initOnUserGesture();
+  };
+  document.addEventListener("click",      unlock, { once: true, capture: true });
+  document.addEventListener("touchstart", unlock, { once: true, capture: true });
+  document.addEventListener("keydown",    unlock, { once: true, capture: true });
+});
+
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.5.0-c.3";
+const EXPECTED_BUILD = "v0.5.0-c.3a.1";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
