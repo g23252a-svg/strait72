@@ -239,5 +239,240 @@
       "icon": "backchannel",
       "newsTicker": "비공개 휴전 타진"
     }
+  },
+  {
+    "id": "global_backchannel_ceasefire_mediation",
+    "name": "비공식 휴전 중재",
+    "type": "conditional_once",
+    "timing": "start_of_turn",
+    "actFilter": [
+      "ACT_3"
+    ],
+    "description": "제3국 중재로 비공식 휴전안이 회람된다. 양측 모두 부담 완화.",
+    "triggerWhen": {
+      "all": [
+        {
+          "metric": "chinaPoliticalPressure",
+          "gte": 60
+        },
+        {
+          "metric": "usIntervention",
+          "gte": 80
+        },
+        {
+          "once": true
+        }
+      ]
+    },
+    "effects": {
+      "chinaPoliticalPressure": -6,
+      "usInterventionGain": -3,
+      "internationalOpinion": 4
+    },
+    "ui": {
+      "severity": "medium",
+      "icon": "diplomacy",
+      "newsTicker": "제3국, 비공식 휴전안 회람"
+    }
+  },
+  {
+    "id": "global_china_hardliner_pushback",
+    "name": "중국 강경파 반발",
+    "type": "conditional_once",
+    "timing": "start_of_turn",
+    "actFilter": [
+      "ACT_3"
+    ],
+    "description": "중국 내 강경파가 휴전 분위기에 반발, 정치 압박과 작전 템포 동시 상승.",
+    "triggerWhen": {
+      "all": [
+        {
+          "metric": "chinaPoliticalPressure",
+          "gte": 70
+        },
+        {
+          "once": true
+        }
+      ]
+    },
+    "effects": {
+      "chinaPoliticalPressure": 8,
+      "chinaTempo": 6
+    },
+    "ui": {
+      "severity": "high",
+      "icon": "warning",
+      "newsTicker": "중국 강경파, 휴전 반대 입장 표명"
+    }
+  },
+  {
+    "id": "global_us_carrier_pressure_maneuver",
+    "name": "미 항모전단 압박 기동",
+    "type": "conditional_once",
+    "timing": "after_operation_resolution",
+    "actFilter": [
+      "ACT_3"
+    ],
+    "description": "미 항모전단이 대만 동쪽 해상에서 압박 기동에 들어간다. 중국 보급선 타격.",
+    "triggerWhen": {
+      "all": [
+        {
+          "metric": "usIntervention",
+          "gte": 90
+        },
+        {
+          "metric": "chinaSupply",
+          "lte": 40
+        },
+        {
+          "once": true
+        }
+      ]
+    },
+    "effects": {
+      "chinaSupply": -8,
+      "usInterventionGain": 4,
+      "chinaPoliticalPressure": 3
+    },
+    "ui": {
+      "severity": "high",
+      "icon": "carrier",
+      "newsTicker": "미 항모전단 동중국해 압박 기동"
+    }
+  },
+  {
+    "id": "global_japan_maritime_surveillance",
+    "name": "일본 해상 감시망 확대",
+    "type": "conditional_once",
+    "timing": "start_of_turn",
+    "actFilter": [
+      "ACT_3"
+    ],
+    "description": "일본 해상자위대 P-1/SH-60 항공감시망이 동중국해로 확장. 중국 봉쇄 효율 감소.",
+    "triggerWhen": {
+      "all": [
+        {
+          "metric": "japanIntervention",
+          "gte": 70
+        },
+        {
+          "once": true
+        }
+      ]
+    },
+    "effects": {
+      "chinaSupply": -5,
+      "japanInterventionGain": 5,
+      "taiwanSupply": 6
+    },
+    "ui": {
+      "severity": "medium",
+      "icon": "radar",
+      "newsTicker": "일본 해상 감시망 동중국해 확장"
+    }
+  },
+  {
+    "id": "global_taiwan_counterattack_prep",
+    "name": "대만 반격 작전 준비",
+    "type": "conditional_once",
+    "timing": "start_of_turn",
+    "actFilter": [
+      "ACT_3"
+    ],
+    "description": "대만군 예비대가 상륙 거점 탈환을 위한 반격 준비에 들어간다.",
+    "triggerWhen": {
+      "all": [
+        {
+          "metric": "taiwanCommand",
+          "gte": 60
+        },
+        {
+          "metric": "usIntervention",
+          "gte": 80
+        },
+        {
+          "once": true
+        }
+      ]
+    },
+    "effects": {
+      "taiwanCommand": 4,
+      "taiwanMorale": 6,
+      "chinaTempo": -4
+    },
+    "ui": {
+      "severity": "medium",
+      "icon": "shield",
+      "newsTicker": "대만군, 거점 탈환 반격 준비"
+    }
+  },
+  {
+    "id": "global_supply_lines_reopened",
+    "name": "해상 보급로 재개통",
+    "type": "conditional_once",
+    "timing": "start_of_turn",
+    "actFilter": [
+      "ACT_3"
+    ],
+    "description": "동맹 해군 호위로 대만 동부 항만 보급로가 재개통, 봉쇄 효과 약화.",
+    "triggerWhen": {
+      "all": [
+        {
+          "metric": "japanIntervention",
+          "gte": 60
+        },
+        {
+          "metric": "taiwanSupply",
+          "lte": 40
+        },
+        {
+          "once": true
+        }
+      ]
+    },
+    "effects": {
+      "taiwanSupply": 15,
+      "taiwanMorale": 4
+    },
+    "ui": {
+      "severity": "high",
+      "icon": "supply",
+      "newsTicker": "동맹 호위, 대만 동부 보급로 재개통"
+    }
+  },
+  {
+    "id": "global_china_supply_chain_fracture",
+    "name": "중국 보급망 균열",
+    "type": "conditional_once",
+    "timing": "after_operation_resolution",
+    "actFilter": [
+      "ACT_3"
+    ],
+    "description": "장기 작전으로 중국 보급망에 균열이 발생, 후방 정치 부담 가중.",
+    "triggerWhen": {
+      "all": [
+        {
+          "metric": "chinaTempo",
+          "lte": 20
+        },
+        {
+          "metric": "chinaSupply",
+          "lte": 30
+        },
+        {
+          "once": true
+        }
+      ]
+    },
+    "effects": {
+      "chinaSupply": -10,
+      "chinaTempo": -5,
+      "chinaPoliticalPressure": 5
+    },
+    "ui": {
+      "severity": "high",
+      "icon": "warning",
+      "newsTicker": "중국 보급망 균열 보도"
+    }
   }
 ]

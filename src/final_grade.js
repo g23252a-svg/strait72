@@ -668,7 +668,15 @@ const EVENT_NAME_FALLBACK = {
   global_market_crash: "세계 증시 폭락",
   global_civilian_casualty_report: "민간 피해 보도",
   global_bad_weather: "해협 기상 악화",
-  global_backchannel_ceasefire_offer: "비공개 휴전 타진"
+  global_backchannel_ceasefire_offer: "비공개 휴전 타진",
+  // v0.4.2-a ACT 3 신규
+  global_backchannel_ceasefire_mediation: "비공식 휴전 중재",
+  global_china_hardliner_pushback: "중국 강경파 반발",
+  global_us_carrier_pressure_maneuver: "미 항모전단 압박 기동",
+  global_japan_maritime_surveillance: "일본 해상 감시망 확대",
+  global_taiwan_counterattack_prep: "대만 반격 작전 준비",
+  global_supply_lines_reopened: "해상 보급로 재개통",
+  global_china_supply_chain_fracture: "중국 보급망 균열"
 };
 
 function eventDisplayName(eventId, eventsData) {
@@ -725,8 +733,18 @@ export function selectKeyMoments(state, eventsData = null) {
   const lastDecisive = sortedByTurnDesc.find(b => !usedTurns.has(b.turn)) || null;
 
   // 2) 주요 국제 이벤트 (트리거된 것들에서 상위 2개)
-  // 점수 영향 큰 순: us_carrier_movement, japan_security_council, korea_nsc, un_emergency 우선
+  // v0.4.2-a: ACT 3 신규 이벤트는 장기전의 핵심 분기점이므로 상위 priority
+  // 일반 priority는 그 다음
   const priority = [
+    // ACT 3 휴전/반격/보급 균열 — 장기전 결정적 분기
+    "global_backchannel_ceasefire_mediation",
+    "global_taiwan_counterattack_prep",
+    "global_china_supply_chain_fracture",
+    "global_supply_lines_reopened",
+    "global_us_carrier_pressure_maneuver",
+    "global_china_hardliner_pushback",
+    "global_japan_maritime_surveillance",
+    // 기존 priority (short_72h + 일반)
     "global_us_carrier_movement", "global_japan_security_council",
     "global_korea_nsc_rear_support", "global_un_emergency_session",
     "global_civilian_casualty_report", "global_market_crash",

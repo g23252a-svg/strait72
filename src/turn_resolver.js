@@ -303,7 +303,17 @@ function checkPredicate(pred, state) {
   return true;
 }
 
-export function shouldTriggerEvent(state, event) {
+export function shouldTriggerEvent(state, event, campaign = null) {
+  // v0.4.2-a: actFilter — 특정 ACT에서만 발동
+  // 형식: event.actFilter = ["ACT_3"] 또는 ["ACT_2","ACT_3"]
+  // 빠지면 모든 ACT에서 발동 (기존 동작 유지)
+  if (Array.isArray(event.actFilter) && event.actFilter.length > 0) {
+    const currentAct = state.persistent?.lastActId
+      || (campaign?.scenarioId === "short_72h" ? "ACT_1"
+          : (state.turn <= 12 ? "ACT_1" : state.turn <= 44 ? "ACT_2" : "ACT_3"));
+    if (!event.actFilter.includes(currentAct)) return false;
+  }
+
   // 일회성 이벤트는 이미 발동했으면 스킵
   const count = state.persistent.occurrenceCount[event.id] || 0;
   const isOnceType = event.triggerWhen.once === true
@@ -664,11 +674,11 @@ export function phaseDamagePolitical(state) {
   return state;
 }
 
-export function phaseInternationalIntervention(state, events, timing) {
+export function phaseInternationalIntervention(state, events, timing, campaign = null) {
   for (const event of events) {
     if (event.timing !== timing) continue;
     if (state.thisTurn.triggeredEvents.includes(event.id)) continue;
-    if (!shouldTriggerEvent(state, event)) continue;
+    if (!shouldTriggerEvent(state, event, campaign)) continue;
     applyEffects(state, event.effects, { side: "global", resolvedTargets: [] });
     markEventTriggered(state, event);
     state.thisTurn.triggeredEvents.push(event.id);
@@ -829,8 +839,8 @@ export function runTurn(state, decisions, indices, campaign = null) {
   phaseCardPlacement(state, decisions, cardIndex);
   phaseOperationResolution(state, cardIndex, axisIndex);
   phaseDamagePolitical(state);
-  phaseInternationalIntervention(state, events, "after_operation_resolution");
-  phaseInternationalIntervention(state, events, "start_of_turn"); // 다음 턴 시작 전 평가
+  phaseInternationalIntervention(state, events, "after_operation_resolution", campaign);
+  phaseInternationalIntervention(state, events, "start_of_turn", campaign); // 다음 턴 시작 전 평가
   phaseTurnEnd(state, campaign);
   return state;
 }
