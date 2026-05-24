@@ -146,3 +146,26 @@ export function actProgress(state, campaign) {
     taiwanGoal: act.taiwanGoal
   };
 }
+
+// =====================================================================
+// v0.4.1.2: ACT HUD 텍스트 — 화면 상단에 ACT별 다른 문구
+// ---------------------------------------------------------------------
+// 기존: "중국 72시간 목표: Xh" (full_21d에서는 ACT 2/3에선 무의미)
+// 개선: ACT에 맞는 표시
+//   ACT 1: 중국 72시간 목표: Xh 남음
+//   ACT 2: 동맹 개입 전환기 · 정치/봉쇄 압박
+//   ACT 3: 동맹 개입 후 장기전 · 협상 우위 경쟁
+// =====================================================================
+export function actHudLabel(state, campaign, chinaHoursRemainingFn) {
+  const act = currentActFor(state, campaign);
+  if (act.id === "ACT_1") {
+    // 72시간 목표는 ACT 1에서만 의미 있음
+    const hours = chinaHoursRemainingFn ? chinaHoursRemainingFn(state.turn) : 0;
+    return { label: "중국 72시간 목표", value: `${hours}h 남음`, tone: hours > 0 ? "amber" : "danger" };
+  }
+  if (act.id === "ACT_2") {
+    return { label: act.name, value: act.description, tone: "amber" };
+  }
+  // ACT_3
+  return { label: act.name, value: act.description, tone: "info" };
+}

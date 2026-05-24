@@ -724,8 +724,8 @@ export function phaseTurnEnd(state, campaign = null) {
     state.persistent.capitalPressureTurns = 0;
   }
 
-  // 1. 승리 조건 체크
-  state.outcome = checkVictoryConditions(state);
+  // 1. 승리 조건 체크 (v0.4.1.2: campaign 전달로 시나리오 분기)
+  state.outcome = checkVictoryConditions(state, campaign);
 
   // 1.5. 이번 턴 한정 방어 보너스 회수
   // defenseValueDamage(영구 손상)는 유지하고, defense_buff 계열의 임시 보너스만 제거한다.
@@ -931,31 +931,53 @@ function halveDamageEffects(effects) {
 // SECTION G. 승리 조건
 // ---------------------------------------------------------------------
 
-export function checkVictoryConditions(state) {
-  // 중국 승리
+export function checkVictoryConditions(state, campaign = null) {
+  // 중국 승리 (양 시나리오 공통)
   if (state.gauges.taiwanGovernment <= 0) return "china_surrender_win";
   if (state.gauges.taiwanSupply <= 0 && state.gauges.taiwanMorale <= 40) return "china_blockade_win";
   if (state.provinces.taipei?.controlStage === "china_control") return "china_capital_win";
 
   // v0.3.8b: 수도권 압박 승리 조건 강화 (즉시 승리 → 2턴 유지 AND 북부 접근로 점령)
-  // 기존 (v0.3.7까지): 타이베이 beachhead_established + 정부 90 이하 → 즉시 승리
-  // 변경 (v0.3.8b):  타이베이 압박 2턴 지속 AND (지룽 또는 타오위안) china_control 점령 필요
-  //   - taiwanGovernment 조건은 제거 (지속/접근로가 더 직관적 조건)
-  //   - capitalPressureTurns는 phaseTurnEnd에서 추적 (이미 갱신됨)
   const taipeiHeldByChina = ["beachhead_established", "china_control"].includes(state.provinces.taipei?.controlStage);
   const sustained = (state.persistent?.capitalPressureTurns || 0) >= 2;
   const northernAccess =
     state.provinces.keelung?.controlStage === "china_control" ||
     state.provinces.taoyuan?.controlStage === "china_control";
+
+  // v0.4.1.2: short_72h에서만 수도권 압박 즉시 승리. full_21d는 ACT 2까지 milestone, ACT 3에서만 승리 인정.
+  const isShortMode = !campaign || campaign.scenarioId === "short_72h";
   if (taipeiHeldByChina && sustained && northernAccess) {
-    return "china_capital_pressure_win";
+    if (isShortMode) {
+      return "china_capital_pressure_win";
+    } else {
+      // full_21d: ACT 3에서만 인정
+      const isAct3 = (state.persistent?.lastActId === "ACT_3") || (state.turn >= 45);
+      if (isAct3) return "china_capital_pressure_win";
+      // 아직 ACT 1/2이면 milestone만 기록
+      if (!state.persistent.milestones) state.persistent.milestones = {};
+      if (!state.persistent.milestones.capitalPressureAt) {
+        state.persistent.milestones.capitalPressureAt = state.turn;
+      }
+    }
   }
 
-  // 대만 승리
-  // 미국 개입도 100은 즉시 승리가 아니라 동맹 개입 단계 진입이다.
-  // 전투는 계속 진행되며, 대만은 최종 턴까지 생존하거나 중국 정치 압박을 100까지 올려야 승리한다.
-  if (state.gauges.chinaPoliticalPressure >= 100) return "taiwan_political_collapse_win";
-  // v0.4.1: state.totalTurns 우선 (campaign으로 84턴 override 가능). 기본 fallback은 GAME_RULES.
+  // 대만 승리 분기 — v0.4.1.2: full_21d에서는 정치압박 100이 즉시 승리 아님
+  if (state.gauges.chinaPoliticalPressure >= 100) {
+    if (isShortMode) {
+      return "taiwan_political_collapse_win";
+    } else {
+      // full_21d: milestone만 기록, 게임은 계속됨
+      if (!state.persistent.milestones) state.persistent.milestones = {};
+      if (!state.persistent.milestones.chinaPoliticalCrisisAt) {
+        state.persistent.milestones.chinaPoliticalCrisisAt = state.turn;
+        // operationLog로 표시 (UI에 보이도록)
+        state.thisTurn?.operationLog?.push("▶ 중국 정치위기 진입 — 즉시 종전 아님. 장기전 새 변수.");
+      }
+      // 압박은 100에 clamp 유지 — 게이지가 100 넘어가지 않음 (이미 addGauge에서 처리)
+    }
+  }
+
+  // 최종 턴 도달 → taiwan_survival_win (양 시나리오 공통)
   const effectiveTotalTurns = state.totalTurns || GAME_RULES.totalTurns;
   if (state.turn >= effectiveTotalTurns) return "taiwan_survival_win";
 

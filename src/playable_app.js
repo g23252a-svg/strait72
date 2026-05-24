@@ -35,6 +35,7 @@ import {
 import {
   buildFinalReport, gradeFromScore, compressBreakdown
 } from "./final_grade.js";
+import { actHudLabel } from "./act_structure.js";
 
 const DATA_PATHS = {
   axes: "./data/axes.json",
@@ -63,7 +64,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.4.1.1";
+const EXPECTED_BUILD = "v0.4.1.2";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -923,7 +924,14 @@ function render() {
   if (!state) return;
   dom.turnCounter.textContent = formatTurnCounter(state.turn, state.totalTurns);
   dom.gameClock.textContent = formatGameTime(state.turn);
-  dom.chinaClock.textContent = `${chinaHoursRemaining(state.turn)}h`;
+  // v0.4.1.2: ACT HUD — ACT 1은 72시간 목표, ACT 2/3은 ACT 명/설명
+  const hud = actHudLabel(state, campaign, chinaHoursRemaining);
+  dom.chinaClock.textContent = hud.value;
+  // 인접 라벨 (HTML에 정의되어 있다면) 갱신 — chinaClock의 인접 span
+  const labelEl = dom.chinaClock.previousElementSibling;
+  if (labelEl && labelEl.classList?.contains("label")) {
+    labelEl.textContent = hud.label;
+  }
   dom.outcomeChip.textContent = state.outcome
     ? outcomeLabel(state.outcome)
     : (state.persistent?.alliedIntervention?.active ? "동맹 개입 후 교전" : "진행 중");
