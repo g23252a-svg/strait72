@@ -82,8 +82,10 @@ export function drawGameCanvas(canvas, state, meta = {}) {
   drawStraitGrid(ctx, w, h);
   drawTaiwanMapImage(ctx, w, h);  // v0.5-a: 실제 전략맵 이미지 (로드 실패 시 fallback)
   drawRoutes(ctx, w, h);
+  drawChinaBlockadeFleet(ctx, w, h, state, meta);  // v0.5-b: 봉쇄 함대 토큰
   drawOperationalMotion(ctx, w, h, state, meta);
   drawAlliedIntervention(ctx, w, h, state, meta);
+  drawTaiwanDefenseTokens(ctx, w, h, state, meta); // v0.5-b: 대만 방어진지 토큰
   drawProvinces(ctx, w, h, state, meta);
   drawTopHud(ctx, w, h, state, meta);
 }
@@ -134,10 +136,20 @@ function drawStraitGrid(ctx, w, h) {
 }
 
 // v0.5-a: 전략맵 이미지 로드 (한 번만, 모듈 캐시)
-// document 없는 환경(테스트)에선 null로 두고 fallback 실루엣을 그린다.
+// v0.5-b: 토큰 이미지로 확장 — 동일 캐시 시스템에 5개 토큰 PNG 추가
+// document 없는 환경(테스트)에선 null로 두고 fallback 실루엣/원형을 그린다.
 let _mapImage = null;
 let _mapImageLoading = false;
 let _mapImageFailed = false;
+
+// v0.5-b: 토큰 이미지 캐시. key → { img, loading, failed }
+const _tokenCache = {
+  china_landing_craft:   { img: null, loading: false, failed: false, path: "./assets/tokens/china_landing_craft.png" },
+  china_blockade_fleet:  { img: null, loading: false, failed: false, path: "./assets/tokens/china_blockade_fleet.png" },
+  us_carrier_group:      { img: null, loading: false, failed: false, path: "./assets/tokens/us_carrier_group.png" },
+  japan_patrol_aircraft: { img: null, loading: false, failed: false, path: "./assets/tokens/japan_patrol_aircraft.png" },
+  taiwan_defense_emplacement: { img: null, loading: false, failed: false, path: "./assets/tokens/taiwan_defense_emplacement.png" }
+};
 
 function ensureMapImageLoaded() {
   if (_mapImage || _mapImageLoading || _mapImageFailed) return;
@@ -154,6 +166,43 @@ function ensureMapImageLoaded() {
     console.warn("[v0.5-a] taiwan_strategic_map.png 로드 실패 — fallback 실루엣 사용");
   };
   img.src = "./assets/maps/taiwan_strategic_map.png";
+}
+
+// v0.5-b: 토큰 PNG 로드 (각 키별로 한 번만)
+function ensureTokenLoaded(key) {
+  const entry = _tokenCache[key];
+  if (!entry) return null;
+  if (entry.img || entry.loading || entry.failed) return entry.img;
+  if (typeof Image === "undefined") return null;
+  entry.loading = true;
+  const img = new Image();
+  img.onload = () => {
+    entry.img = img;
+    entry.loading = false;
+  };
+  img.onerror = () => {
+    entry.failed = true;
+    entry.loading = false;
+    console.warn(`[v0.5-b] ${key}.png 로드 실패 — fallback 원형 사용`);
+  };
+  img.src = entry.path;
+  return null;
+}
+
+// v0.5-b: 토큰 PNG를 size 픽셀로 가운데정렬해서 그리기. img 미로드면 false 반환.
+function drawTokenImage(ctx, key, cx, cy, size, opts = {}) {
+  const img = ensureTokenLoaded(key);
+  if (!img) return false;
+  const half = size / 2;
+  ctx.save();
+  if (opts.alpha != null) ctx.globalAlpha = opts.alpha;
+  if (opts.shadowColor) {
+    ctx.shadowColor = opts.shadowColor;
+    ctx.shadowBlur = opts.shadowBlur || 12;
+  }
+  ctx.drawImage(img, cx - half, cy - half, size, size);
+  ctx.restore();
+  return true;
 }
 
 // v0.5-a: 전략맵 이미지 그리기. 로드 안 됐으면 fallback 실루엣.
@@ -327,7 +376,23 @@ function drawOperationalMotion(ctx, w, h, state, meta = {}) {
       lx = sx + (tx - sx) * (0.35 + 0.35 * t);
       ly = sy + (ty - sy) * (0.35 + 0.35 * t);
     }
-    drawShipIcon(ctx, lx, ly, "#ff6b76", controlled ? "통제" : "상륙", craftSize);
+    // v0.5-b: 실제 상륙정 PNG 토큰. 로드 안 되면 fallback drawShipIcon.
+    const tokenSize = 48 * craftSize;
+    const tokenDrawn = drawTokenImage(ctx, "china_landing_craft", lx, ly, tokenSize, {
+      shadowColor: "rgba(255, 80, 80, 0.6)", shadowBlur: 14
+    });
+    if (!tokenDrawn) {
+      drawShipIcon(ctx, lx, ly, "#ff6b76", controlled ? "통제" : "상륙", craftSize);
+    } else if (controlled) {
+      // PNG 사용 시에도 "통제" 라벨은 코드로 (PNG 안엔 없으니)
+      ctx.fillStyle = "#fff";
+      ctx.font = "700 11px system-ui";
+      ctx.textAlign = "center";
+      ctx.shadowColor = "rgba(0,0,0,0.9)";
+      ctx.shadowBlur = 4;
+      ctx.fillText("통제", lx, ly + tokenSize / 2 + 12);
+      ctx.shadowBlur = 0;
+    }
     ctx.restore();
   }
 }
@@ -339,16 +404,49 @@ function drawAlliedIntervention(ctx, w, h, state, meta = {}) {
   const t = (Date.now() % 1500) / 1500;
   ctx.save();
 
-  // 미국 항모전단: 대만 동쪽 해상에서 진입 (v0.3.10: 1.4배 사이즈 강화)
+  // v0.5-b: 미국 항모전단 — 실제 PNG 토큰 (CV/DD 구성). 대만 동쪽 해상.
   const baseX = w * 0.84;
   const baseY = h * 0.30;
-  drawFleetGroup(ctx, baseX, baseY, "🇺🇸 미 항모전단", "#5aa9ff", t, 1.4);
+  const usSize = 120;  // PNG는 CV+DD 3척 묶음이라 크게
+  const usDrawn = drawTokenImage(ctx, "us_carrier_group", baseX, baseY, usSize, {
+    shadowColor: "rgba(90, 169, 255, 0.55)", shadowBlur: 18
+  });
+  if (!usDrawn) {
+    // fallback: 기존 코드 함대
+    drawFleetGroup(ctx, baseX, baseY, "🇺🇸 미 항모전단", "#5aa9ff", t, 1.4);
+  } else {
+    // PNG 위에 라벨
+    ctx.fillStyle = "#cfe5ff";
+    ctx.font = "700 13px system-ui";
+    ctx.textAlign = "center";
+    ctx.shadowColor = "rgba(0,0,0,0.9)";
+    ctx.shadowBlur = 5;
+    ctx.fillText("🇺🇸 미 제7함대", baseX, baseY - usSize / 2 - 6);
+    ctx.shadowBlur = 0;
+  }
 
   drawMovingArrow(ctx, baseX - 18, baseY + 26, w * 0.67, h * 0.45, "#5aa9ff", t);
 
   if (allied.japanNavalSupport) {
-    drawFleetGroup(ctx, w * 0.76, h * 0.14, "🇯🇵 일본 해상지원", "#8bd3ff", (t + 0.3) % 1, 1.15);
-    drawMovingArrow(ctx, w * 0.75, h * 0.19, w * 0.61, h * 0.31, "#8bd3ff", t);
+    // v0.5-b: 일본 P-1 — 실제 PNG. 북동쪽 해상.
+    const jpX = w * 0.76;
+    const jpY = h * 0.14;
+    const jpSize = 90;
+    const jpDrawn = drawTokenImage(ctx, "japan_patrol_aircraft", jpX, jpY, jpSize, {
+      shadowColor: "rgba(140, 200, 255, 0.5)", shadowBlur: 14
+    });
+    if (!jpDrawn) {
+      drawFleetGroup(ctx, jpX, jpY, "🇯🇵 일본 해상지원", "#8bd3ff", (t + 0.3) % 1, 1.15);
+    } else {
+      ctx.fillStyle = "#bfe1ff";
+      ctx.font = "700 12px system-ui";
+      ctx.textAlign = "center";
+      ctx.shadowColor = "rgba(0,0,0,0.9)";
+      ctx.shadowBlur = 5;
+      ctx.fillText("🇯🇵 일본 호위전단", jpX, jpY - jpSize / 2 - 5);
+      ctx.shadowBlur = 0;
+    }
+    drawMovingArrow(ctx, jpX - 2, jpY + 36, w * 0.61, h * 0.31, "#8bd3ff", t);
   }
 
   if (allied.koreaRearSupportActive) {
@@ -463,6 +561,89 @@ function drawSupportNode(ctx, x, y, label, color) {
   ctx.fillText(label, x, y);
   ctx.textBaseline = "alphabetic";
   ctx.restore();
+}
+
+// =====================================================================
+// v0.5-b: 중국 봉쇄 함대 토큰
+// ---------------------------------------------------------------------
+// naval_blockade가 이번 턴 또는 최근 3턴 내 chinaAxis였으면 strait에 표시.
+// 게임 상태만 읽고 그림 — state 수정 없음.
+// =====================================================================
+function drawChinaBlockadeFleet(ctx, w, h, state, meta = {}) {
+  if (!state) return;
+  const thisAxis = state.thisTurn?.chinaAxis;
+  const recent = state.persistent?.recentChinaAxes || [];
+  const last3 = recent.slice(-3);
+  const isBlockading = thisAxis === "naval_blockade" || last3.includes("naval_blockade");
+  if (!isBlockading) return;
+
+  const strait = PROVINCE_LAYOUT.strait;
+  if (!strait) return;
+  // strait 좌표보다 약간 남쪽 — 대만 해협 라벨과 겹치지 않게
+  const cx = strait.x * w + 10;
+  const cy = strait.y * h + 30;
+
+  const pulseT = (Date.now() % 1800) / 1800;
+  const pulseAlpha = 0.55 + 0.25 * Math.sin(pulseT * Math.PI * 2);
+
+  // PNG 토큰 (붉은 원형 함대)
+  const tokenSize = 110;
+  const drawn = drawTokenImage(ctx, "china_blockade_fleet", cx, cy, tokenSize, {
+    shadowColor: `rgba(255, 80, 80, ${pulseAlpha})`, shadowBlur: 16
+  });
+  if (!drawn) {
+    // fallback: 단순 빨간 원
+    ctx.save();
+    ctx.fillStyle = `rgba(220, 70, 80, ${pulseAlpha * 0.5})`;
+    ctx.strokeStyle = "rgba(255, 100, 110, 0.9)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 35, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // 라벨
+  ctx.save();
+  ctx.fillStyle = "#ffd0d0";
+  ctx.font = "700 12px system-ui";
+  ctx.textAlign = "center";
+  ctx.shadowColor = "rgba(0,0,0,0.9)";
+  ctx.shadowBlur = 5;
+  ctx.fillText("🇨🇳 해상 봉쇄", cx, cy + tokenSize / 2 + 12);
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+// =====================================================================
+// v0.5-b: 대만 방어진지 토큰
+// ---------------------------------------------------------------------
+// 안정 방어 상태(stable_defense)이면서 거점에 표시. PNG 토큰을 거점 좌표 옆에
+// 작게 배치 (라벨 가리지 않게 오른쪽 위 오프셋).
+// china_control 거점은 표시 안 함 (이미 함락).
+// =====================================================================
+function drawTaiwanDefenseTokens(ctx, w, h, state, meta = {}) {
+  if (!state?.provinces) return;
+  for (const [id, pos] of Object.entries(PROVINCE_LAYOUT)) {
+    if (id === "strait") continue;
+    const province = state.provinces[id];
+    if (!province) continue;
+    // china_control / coastal_breach / contested 상태는 방어진지 표시 X
+    // beachhead_established도 함락 직전이므로 X
+    if (province.controlStage !== "stable_defense") continue;
+    // 상륙 진행 중 (landingStage !== none)이면 표시 X — 위험 상태
+    if (province.landingStage && province.landingStage !== "none") continue;
+
+    const cx = pos.x * w + pos.r + 8;  // 거점 토큰 오른쪽 위
+    const cy = pos.y * h - pos.r - 8;
+    const tokenSize = 36;
+    drawTokenImage(ctx, "taiwan_defense_emplacement", cx, cy, tokenSize, {
+      alpha: 0.92,
+      shadowColor: "rgba(120, 220, 140, 0.5)", shadowBlur: 8
+    });
+    // 로드 실패 시 fallback은 그리지 않음 — 안정 거점에 과한 시각 노이즈 방지
+  }
 }
 
 
