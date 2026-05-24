@@ -13,6 +13,7 @@ import { GAME_RULES, BUILD_TAG, BUILD_DATE, BUILD_FULL, TOTAL_GAME_HOURS, format
 import { AXIS_DEFAULT_TARGETS, chooseBestTarget } from "./combat_resolver.js";
 import { initializeDecks, DRAW_PER_TURN } from "./deck_state.js";
 import { buildCardTooltipHTML } from "./card_tooltip.js";
+import { generateAct3Objectives, shouldShowAct3Objectives } from "./act3_objectives.js";
 import {
   chooseChinaCards as aiChooseChinaCards,
   chooseTaiwanCards as aiChooseTaiwanCards,
@@ -64,7 +65,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.4.2-b2";
+const EXPECTED_BUILD = "v0.4.2-b3";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -1328,6 +1329,47 @@ function showDayEndModal(dayNumber) {
   else if (campaign?.selectedSide === "china") interpretationText = report.interpretation.china;
   else interpretationText = report.interpretation.both + " / 대만: " + report.interpretation.taiwan + " / 중국: " + report.interpretation.china;
 
+  // v0.4.2-b3: ACT 3 진입 후 동적 목표 섹션
+  let act3ObjSection = "";
+  if (shouldShowAct3Objectives(state, campaign)) {
+    const obj = generateAct3Objectives(state);
+    const sideKey = campaign?.selectedSide === "china" ? "china"
+                  : campaign?.selectedSide === "both" ? null
+                  : "taiwan";
+
+    function renderObjList(list, label) {
+      if (!list || list.length === 0) return "";
+      const items = list.map(o => {
+        const color = o.priority === "high" ? "#ff6b6b"
+                    : o.priority === "medium" ? "#ffc857"
+                    : "var(--muted)";
+        const marker = o.priority === "high" ? "▶"
+                     : o.priority === "medium" ? "•"
+                     : "·";
+        return `<li><span style="color:${color}">${marker}</span> ${escapeHtml(o.text)}</li>`;
+      }).join("");
+      return `<div class="act3-obj-side"><h4 style="margin:8px 0 4px;font-size:13px;color:var(--muted)">${label}</h4><ul class="act3-obj-list" style="margin:0;padding-left:18px;font-size:13px">${items}</ul></div>`;
+    }
+
+    let inner = "";
+    if (sideKey === null) {
+      inner = renderObjList(obj.taiwan, "🇹🇼 대만 측") + renderObjList(obj.china, "🇨🇳 중국 측");
+    } else if (sideKey === "taiwan") {
+      inner = renderObjList(obj.taiwan, "🇹🇼 대만 측 목표");
+    } else {
+      inner = renderObjList(obj.china, "🇨🇳 중국 측 목표");
+    }
+
+    if (inner) {
+      act3ObjSection = `
+        <section class="act3-objectives" style="border:1px solid rgba(255,200,87,.3);background:rgba(255,200,87,.05);border-radius:6px;padding:10px 14px;margin:8px 0">
+          <h3 style="margin:0 0 6px;color:#ffc857;font-size:14px">📋 장기전 목표 (ACT 3)</h3>
+          ${inner}
+        </section>
+      `;
+    }
+  }
+
   overlay.innerHTML = `
     <div class="day-modal">
       <div class="day-header">
@@ -1341,6 +1383,8 @@ function showDayEndModal(dayNumber) {
       ${eventLines ? `<section><h3>국제 이벤트</h3><ul class="event-list">${eventLines}</ul></section>` : ""}
 
       <section><h3>게이지 변화</h3><ul class="gauge-list">${gaugeLines || "<li class=\"muted\">변화 없음</li>"}</ul></section>
+
+      ${act3ObjSection}
 
       <section class="interp-box">
         <h3>${campaign?.selectedSide === "both" ? "양측 분석" : SIDES[campaign?.selectedSide]?.name + " 관점"}</h3>
