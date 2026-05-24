@@ -578,9 +578,15 @@ export function buildFinalReport(state, campaign, data = {}) {
   const triggeredEvents = [...(state.persistent?.triggeredOnce || [])];
 
   // 활성 영구 보상 (이번 게임에서 선택한)
-  const ownedRewards = (state.persistent?.rewards || [])
-    .filter(r => r.applyTiming === "persistent")
-    .map(r => ({ id: r.id, name: r.name, side: r.side }));
+  // v0.4.1.1: id 기준 dedup 안전망 — applyReward 가드가 깨졌더라도 표시는 깔끔하게
+  const ownedRewards = [];
+  const seenRewardIds = new Set();
+  for (const r of (state.persistent?.rewards || [])) {
+    if (r.applyTiming !== "persistent") continue;
+    if (seenRewardIds.has(r.id)) continue;
+    seenRewardIds.add(r.id);
+    ownedRewards.push({ id: r.id, name: r.name, side: r.side });
+  }
 
   // v0.4.0-d3: 핵심 사건 + 디브리핑 생성
   const playerSide = campaign?.selectedSide === "both"
@@ -593,7 +599,8 @@ export function buildFinalReport(state, campaign, data = {}) {
     outcome,
     title,
     finalTurn,
-    totalTurns: data.gameRules?.totalTurns || 30,
+    // v0.4.1.1: state.totalTurns 우선 (campaign 84턴 override 반영). fallback 순서: state → campaign → gameRules → 30
+    totalTurns: state.totalTurns || campaign?.totalTurns || data.gameRules?.totalTurns || 30,
     taiwan: {
       side: "taiwan",
       score: taiwanResult.score,
@@ -721,15 +728,22 @@ export function selectKeyMoments(state, eventsData = null) {
     .map(id => ({ id, name: eventDisplayName(id, eventsData) }));
 
   // 3) 영향 큰 영구 보상 — owned persistent rewards 중 b3 계열 또는 perTurnGain 위주
+  // v0.4.1.1: id 기준 dedup (rewards 중복이 있어도 1개씩만)
   const persistRewards = (state.persistent?.rewards || [])
     .filter(r => r.applyTiming === "persistent");
-  // 강도 추정: rangedAttackBonus / nightOpDefenseDebuff / reduction 계열 또는 perTurnGain
+  const seenImpactIds = new Set();
   const impactfulRewards = persistRewards
     .filter(r => {
+      if (seenImpactIds.has(r.id)) return false;
       const e = r.effects || {};
-      return e.rangedAttackBonus || e.nightOpDefenseDebuff
+      const hasImpact = e.rangedAttackBonus || e.nightOpDefenseDebuff
         || e.taiwanSupplyDamageReduction || e.usJapanInterventionGainReduction
         || e.perTurnGain || e.defenseValueBonus;
+      if (hasImpact) {
+        seenImpactIds.add(r.id);
+        return true;
+      }
+      return false;
     })
     .slice(0, 2);
 

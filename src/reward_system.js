@@ -112,6 +112,14 @@ export function applyReward(state, reward) {
     return applyInstantReward(state, reward);
   }
   if (reward.applyTiming === "persistent") {
+    // v0.4.1.1: 2차 방어 — 풀 필터를 통과해도 같은 id가 이미 있으면 skip
+    // (race condition / UI 빠른 두 번 클릭 / 다른 추첨 라운드에서 중복 등 모두 차단)
+    const alreadyOwned = state.persistent.rewards.some(
+      r => r.applyTiming === "persistent" && r.id === reward.id
+    );
+    if (alreadyOwned) {
+      return { applied: "already_owned", note: "persistent 중복 차단" };
+    }
     state.persistent.rewards.push({
       id: reward.id, name: reward.name, side: reward.side,
       applyTiming: "persistent", effects: reward.effects,

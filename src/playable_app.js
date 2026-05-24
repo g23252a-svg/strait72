@@ -63,7 +63,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.4.1";
+const EXPECTED_BUILD = "v0.4.1.1";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -112,7 +112,7 @@ async function init() {
   // v0.4.0-a: 진영 선택 화면을 먼저 보여줌
   showSideSelectModal((selectedSide, difficulty, scenarioId) => {
     campaign = createCampaignState(selectedSide, difficulty, scenarioId);
-    saveLastChoice(selectedSide, difficulty);
+    saveLastChoice(selectedSide, difficulty, scenarioId);
     resetGame();
     bindEvents();
     startCanvasLoop();
@@ -131,6 +131,7 @@ function renderBuildBadge() {
     margin-top: 4px; font-size: 11px; color: rgba(255,255,255,.55);
     letter-spacing: .3px; font-family: monospace;
   `;
+  // v0.4.1.1: BUILD 라인은 기본 short_72h 기준 (state 없을 때 초기 표시). 게임 시작 후 campaign badge가 정확한 값으로 갱신.
   badge.textContent = `BUILD ${BUILD_FULL} · RULES ${GAME_RULES.totalTurns}턴 × ${GAME_RULES.hoursPerTurn}h`;
   titleEl.appendChild(badge);
 }
@@ -168,11 +169,13 @@ function showSideSelectModal(onConfirm) {
     </button>
   `).join("");
 
+  // v0.4.1.1: 빠른 시작은 scenarioId 저장 안 되어 있으면 short_72h 기본
+  const quickScenarioName = SCENARIOS[last?.scenarioId]?.name || SCENARIOS.short_72h.name;
   const quickStartHtml = last ? `
     <div class="quick-start">
       <button id="quickStartBtn" class="primary">
         이전 설정으로 빠른 시작
-        <span>${SIDES[last.side]?.name} · ${DIFFICULTIES[last.difficulty]?.name}</span>
+        <span>${SIDES[last.side]?.name} · ${DIFFICULTIES[last.difficulty]?.name} · ${quickScenarioName}</span>
       </button>
       <button id="newChoiceBtn" class="secondary">새로 선택하기</button>
     </div>
@@ -397,7 +400,7 @@ function showSideSelectModal(onConfirm) {
   if (quickBtn && last) {
     quickBtn.addEventListener("click", () => {
       overlay.remove();
-      onConfirm(last.side, last.difficulty, "short_72h"); // 빠른 시작은 short
+      onConfirm(last.side, last.difficulty, last.scenarioId || "short_72h");
     });
   }
   const newBtn = overlay.querySelector("#newChoiceBtn");
@@ -482,11 +485,23 @@ function renderCampaignBadge() {
   if (!campaign) { badge.textContent = ""; return; }
   const sideName = SIDES[campaign.selectedSide]?.name || campaign.selectedSide;
   const diffName = DIFFICULTIES[campaign.difficulty]?.name || campaign.difficulty;
+  const scenarioName = SCENARIOS[campaign.scenarioId]?.name || campaign.scenarioId || "";
   let color = "#7cabdc";
   if (campaign.selectedSide === "taiwan") color = "#80efb1";
   else if (campaign.selectedSide === "china") color = "#ff8b94";
   else color = "rgba(255,255,255,.55)";
-  badge.innerHTML = `<span style="color:${color};font-weight:700">▸ ${sideName}</span> <span style="color:rgba(255,255,255,.5)">· ${diffName}</span>`;
+  // v0.4.1.1: 시나리오 이름 명시 표시
+  badge.innerHTML = `<span style="color:${color};font-weight:700">▸ ${sideName}</span> <span style="color:rgba(255,255,255,.5)">· ${diffName} · ${scenarioName}</span>`;
+
+  // v0.4.1.1: BUILD 라인의 RULES 라벨도 시나리오에 맞게 갱신
+  const buildBadge = titleEl.querySelector("div:not(.campaign-badge)");
+  if (buildBadge && campaign.totalTurns) {
+    const hoursPerTurn = GAME_RULES.hoursPerTurn;
+    const totalHours = campaign.totalTurns * hoursPerTurn;
+    const totalDays = totalHours / 24;
+    const daysLabel = totalDays % 1 === 0 ? `${totalDays}일` : `${totalDays.toFixed(1)}일`;
+    buildBadge.textContent = `BUILD ${BUILD_FULL} · RULES ${campaign.totalTurns}턴 × ${hoursPerTurn}h · ${daysLabel}`;
+  }
 }
 
 // v0.4.0-a: 진영별 UI 잠금 - 상대 진영의 카드/축/방어중점 숨김/비활성화
@@ -559,7 +574,7 @@ function bindEvents() {
     // v0.4.0-a: 진영 선택 다시
     showSideSelectModal((selectedSide, difficulty, scenarioId) => {
       campaign = createCampaignState(selectedSide, difficulty, scenarioId);
-      saveLastChoice(selectedSide, difficulty);
+      saveLastChoice(selectedSide, difficulty, scenarioId);
       resetGame();
       dom.runTurnBtn.disabled = false;
       dom.autoTurnBtn.disabled = false;
@@ -1921,7 +1936,7 @@ function showFinalResultModal() {
     overlay.remove();
     showSideSelectModal((selectedSide, difficulty, scenarioId) => {
       campaign = createCampaignState(selectedSide, difficulty, scenarioId);
-      saveLastChoice(selectedSide, difficulty);
+      saveLastChoice(selectedSide, difficulty, scenarioId);
       resetGame();
       dom.runTurnBtn.disabled = false;
       dom.autoTurnBtn.disabled = false;

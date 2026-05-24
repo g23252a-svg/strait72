@@ -39,17 +39,18 @@ export function loadLastChoice() {
     if (!raw) return null;
     const data = JSON.parse(raw);
     if (!SIDES[data?.side] || !DIFFICULTIES[data?.difficulty]) return null;
-    return { side: data.side, difficulty: data.difficulty, savedAt: data.savedAt };
+    // v0.4.1.1: scenarioId 포함 (이전 저장은 undefined → quickStart에서 short_72h fallback)
+    return { side: data.side, difficulty: data.difficulty, scenarioId: data.scenarioId, savedAt: data.savedAt };
   } catch {
     return null;
   }
 }
 
-export function saveLastChoice(side, difficulty) {
+export function saveLastChoice(side, difficulty, scenarioId = "short_72h") {
   if (typeof localStorage === "undefined") return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      side, difficulty, savedAt: Date.now()
+      side, difficulty, scenarioId, savedAt: Date.now()
     }));
   } catch { /* ignore */ }
 }
