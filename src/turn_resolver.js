@@ -932,28 +932,74 @@ function halveDamageEffects(effects) {
 // ---------------------------------------------------------------------
 
 export function checkVictoryConditions(state, campaign = null) {
-  // 중국 승리 (양 시나리오 공통)
+  // 양 시나리오 공통: 정부 0 / 보급+사기 동시 붕괴 (이건 진짜 결정타)
   if (state.gauges.taiwanGovernment <= 0) return "china_surrender_win";
   if (state.gauges.taiwanSupply <= 0 && state.gauges.taiwanMorale <= 40) return "china_blockade_win";
-  if (state.provinces.taipei?.controlStage === "china_control") return "china_capital_win";
 
-  // v0.3.8b: 수도권 압박 승리 조건 강화 (즉시 승리 → 2턴 유지 AND 북부 접근로 점령)
+  const isShortMode = !campaign || campaign.scenarioId === "short_72h";
+  const taipei = state.provinces.taipei;
+  const taipeiCtrlByChina = taipei?.controlStage === "china_control";
+
+  // 타이베이 함락 처리 — v0.4.1.3: short는 즉시 승리, full은 정부 이전 milestone
+  if (taipeiCtrlByChina) {
+    if (isShortMode) {
+      return "china_capital_win";
+    } else {
+      // full_21d: 정부 이전 milestone — 1회만 발동 + 게이지 변화
+      if (!state.persistent.milestones) state.persistent.milestones = {};
+      if (!state.persistent.milestones.taipeiFallsAt) {
+        state.persistent.milestones.taipeiFallsAt = state.turn;
+        // 정부 이전 효과 — 큰 위기지만 게임은 계속
+        state.gauges.taiwanGovernment = Math.max(0, state.gauges.taiwanGovernment - 25);
+        state.gauges.taiwanMorale = Math.max(0, state.gauges.taiwanMorale - 15);
+        state.gauges.usIntervention = Math.min(100, state.gauges.usIntervention + 10);
+        state.gauges.japanIntervention = Math.min(100, state.gauges.japanIntervention + 5);
+        state.thisTurn?.operationLog?.push(
+          "▶ 대만 정부 이전 — 타이베이 함락, 정부 -25 / 사기 -15 / 미국 +10 / 일본 +5. 전쟁 지속."
+        );
+        // 정부 0이 되면 위에서 잡힘
+        if (state.gauges.taiwanGovernment <= 0) return "china_surrender_win";
+      }
+
+      // 장기 점령 조건 — full_21d 전용
+      // taipeiFallsAt + 8턴 경과 + 북부 접근로 (지룽/타오위안 한 곳 이상 china_control)
+      const fallTurn = state.persistent.milestones.taipeiFallsAt;
+      const turnsSinceFall = state.turn - fallTurn;
+      const northernAccess =
+        state.provinces.keelung?.controlStage === "china_control" ||
+        state.provinces.taoyuan?.controlStage === "china_control";
+      if (turnsSinceFall >= 8 && northernAccess) {
+        return "china_capital_win";
+      }
+    }
+  } else {
+    // 타이베이가 china_control이 아니면 — full_21d에서 반격 카운터 리셋
+    // (taipeiFallsAt는 그대로 두되, 장기 점령 카운트는 다음 china_control 도달부터 다시)
+    // 구현 방식: turnsSinceFall 계산이 매 턴 turn - taipeiFallsAt이므로
+    // 반격으로 china_control이 끊기는 동안에는 위 조건 통과 안 됨 (자연스럽게 리셋)
+    // 만약 명시적 reset이 필요하면 여기서 taipeiFallsAt 자체를 갱신:
+    if (!isShortMode && state.persistent?.milestones?.taipeiFallsAt && taipei?.controlStage !== "china_control") {
+      // 명시적 카운터 리셋 — 다시 함락되면 그 시점부터 카운트
+      // taipeiFallsAt는 "처음 함락 시점"으로 유지, 추가 시점은 lastTaipeiFallAt에
+      // 단순화: 반격 후 재함락 시 fallTurn을 갱신
+      // 여기서는 카운터만 reset (가장 단순한 정책)
+      state.persistent.milestones.taipeiFallsAt = null;
+    }
+  }
+
+  // v0.3.8b: 수도권 압박 — short는 즉시, full ACT 3만 인정
   const taipeiHeldByChina = ["beachhead_established", "china_control"].includes(state.provinces.taipei?.controlStage);
   const sustained = (state.persistent?.capitalPressureTurns || 0) >= 2;
-  const northernAccess =
+  const northernAccessForPressure =
     state.provinces.keelung?.controlStage === "china_control" ||
     state.provinces.taoyuan?.controlStage === "china_control";
 
-  // v0.4.1.2: short_72h에서만 수도권 압박 즉시 승리. full_21d는 ACT 2까지 milestone, ACT 3에서만 승리 인정.
-  const isShortMode = !campaign || campaign.scenarioId === "short_72h";
-  if (taipeiHeldByChina && sustained && northernAccess) {
+  if (taipeiHeldByChina && sustained && northernAccessForPressure) {
     if (isShortMode) {
       return "china_capital_pressure_win";
     } else {
-      // full_21d: ACT 3에서만 인정
       const isAct3 = (state.persistent?.lastActId === "ACT_3") || (state.turn >= 45);
       if (isAct3) return "china_capital_pressure_win";
-      // 아직 ACT 1/2이면 milestone만 기록
       if (!state.persistent.milestones) state.persistent.milestones = {};
       if (!state.persistent.milestones.capitalPressureAt) {
         state.persistent.milestones.capitalPressureAt = state.turn;
@@ -966,14 +1012,11 @@ export function checkVictoryConditions(state, campaign = null) {
     if (isShortMode) {
       return "taiwan_political_collapse_win";
     } else {
-      // full_21d: milestone만 기록, 게임은 계속됨
       if (!state.persistent.milestones) state.persistent.milestones = {};
       if (!state.persistent.milestones.chinaPoliticalCrisisAt) {
         state.persistent.milestones.chinaPoliticalCrisisAt = state.turn;
-        // operationLog로 표시 (UI에 보이도록)
         state.thisTurn?.operationLog?.push("▶ 중국 정치위기 진입 — 즉시 종전 아님. 장기전 새 변수.");
       }
-      // 압박은 100에 clamp 유지 — 게이지가 100 넘어가지 않음 (이미 addGauge에서 처리)
     }
   }
 
