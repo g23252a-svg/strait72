@@ -926,7 +926,7 @@ function outcomeTitle(outcome) {
     case "china_capital_win": return "타이베이 함락 — 중국 군사 승리";
     case "china_capital_pressure_win": return "수도권 압박 누적 — 중국 점진 승리";
     case "china_blockade_win": return "봉쇄 성공 — 중국 봉쇄 승리";
-    case "china_surrender_win": return "대만 정부 붕괴 — 중국 항복 승리";
+    case "china_surrender_win": return "대만 정부 붕괴 — 중국 결정적 승리";
     case "no_outcome": return "결판 없음";
     default: return outcome;
   }

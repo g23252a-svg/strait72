@@ -64,7 +64,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.4.2-a.1";
+const EXPECTED_BUILD = "v0.4.2-a.2";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -890,15 +890,15 @@ function runManualTurn() {
   }
 }
 
-// v0.4.0-d2 → d4.1: outcome 발생 시 떠 있는 모든 pending 모달 강제 제거
+// v0.4.0-d2 → d4.1 → v0.4.2-a.2: outcome 발생 시 떠 있는 모든 pending 모달 강제 제거
 // (DAY end modal, reward selection 등)
 function closeAllPendingModals() {
-  const overlay = document.getElementById("dayEndOverlay");
-  if (overlay) {
-    overlay.remove();
-    pendingDayModal = false;
+  const ids = ["dayEndOverlay", "sideSelectOverlay"];
+  for (const id of ids) {
+    const overlay = document.getElementById(id);
+    if (overlay) overlay.remove();
   }
-  // 다른 미래 모달들도 여기에 추가될 수 있음 (현재는 DAY가 유일)
+  pendingDayModal = false;
 }
 
 function rememberPicks(side, ids) {

@@ -997,15 +997,18 @@ export function checkVictoryConditions(state, campaign = null) {
   const taipeiCtrlByChina = taipei?.controlStage === "china_control";
 
   // 타이베이 함락 처리 — v0.4.1.3: short는 즉시 승리, full은 정부 이전 milestone
+  // v0.4.2-a.2: 정부 이전 페널티는 **1회 제한** (capitalRelocationAppliedAt 별도 플래그).
+  //   - taipeiFallsAt: 장기 점령 카운터 (탈환 시 null로 리셋, 재함락 시 다시 기록)
+  //   - capitalRelocationAppliedAt: 1회성 게이지 페널티 (리셋 절대 안 함)
   if (taipeiCtrlByChina) {
     if (isShortMode) {
       return "china_capital_win";
     } else {
-      // full_21d: 정부 이전 milestone — 1회만 발동 + 게이지 변화
       if (!state.persistent.milestones) state.persistent.milestones = {};
-      if (!state.persistent.milestones.taipeiFallsAt) {
-        state.persistent.milestones.taipeiFallsAt = state.turn;
-        // 정부 이전 효과 — 큰 위기지만 게임은 계속
+
+      // 게이지 페널티: capitalRelocationAppliedAt 기준 1회만
+      if (!state.persistent.milestones.capitalRelocationAppliedAt) {
+        state.persistent.milestones.capitalRelocationAppliedAt = state.turn;
         state.gauges.taiwanGovernment = Math.max(0, state.gauges.taiwanGovernment - 25);
         state.gauges.taiwanMorale = Math.max(0, state.gauges.taiwanMorale - 15);
         state.gauges.usIntervention = Math.min(100, state.gauges.usIntervention + 10);
@@ -1013,12 +1016,22 @@ export function checkVictoryConditions(state, campaign = null) {
         state.thisTurn?.operationLog?.push(
           "▶ 대만 정부 이전 — 타이베이 함락, 정부 -25 / 사기 -15 / 미국 +10 / 일본 +5. 전쟁 지속."
         );
-        // 정부 0이 되면 위에서 잡힘
+        // 정부 0이 되면 위에서 잡힘 (다음 호출에서)
         if (state.gauges.taiwanGovernment <= 0) return "china_surrender_win";
       }
 
-      // 장기 점령 조건 — full_21d 전용
-      // taipeiFallsAt + 8턴 경과 + 북부 접근로 (지룽/타오위안 한 곳 이상 china_control)
+      // 장기 점령 카운터: taipeiFallsAt이 null이면 (탈환 후 재함락) 새 시점 기록
+      if (!state.persistent.milestones.taipeiFallsAt) {
+        state.persistent.milestones.taipeiFallsAt = state.turn;
+        // 재함락 로그 (capitalRelocationApplied 이미 적용된 상태 = 두 번째 이상)
+        if (state.persistent.milestones.capitalRelocationAppliedAt !== state.turn) {
+          state.thisTurn?.operationLog?.push(
+            "▶ 타이베이 재함락 — 장기 점령 카운터 재시작. 정부 이전 페널티 재적용 없음."
+          );
+        }
+      }
+
+      // 장기 점령 조건 — taipeiFallsAt + 8턴 + 북부 접근로
       const fallTurn = state.persistent.milestones.taipeiFallsAt;
       const turnsSinceFall = state.turn - fallTurn;
       const northernAccess =
@@ -1029,16 +1042,9 @@ export function checkVictoryConditions(state, campaign = null) {
       }
     }
   } else {
-    // 타이베이가 china_control이 아니면 — full_21d에서 반격 카운터 리셋
-    // (taipeiFallsAt는 그대로 두되, 장기 점령 카운트는 다음 china_control 도달부터 다시)
-    // 구현 방식: turnsSinceFall 계산이 매 턴 turn - taipeiFallsAt이므로
-    // 반격으로 china_control이 끊기는 동안에는 위 조건 통과 안 됨 (자연스럽게 리셋)
-    // 만약 명시적 reset이 필요하면 여기서 taipeiFallsAt 자체를 갱신:
-    if (!isShortMode && state.persistent?.milestones?.taipeiFallsAt && taipei?.controlStage !== "china_control") {
-      // 명시적 카운터 리셋 — 다시 함락되면 그 시점부터 카운트
-      // taipeiFallsAt는 "처음 함락 시점"으로 유지, 추가 시점은 lastTaipeiFallAt에
-      // 단순화: 반격 후 재함락 시 fallTurn을 갱신
-      // 여기서는 카운터만 reset (가장 단순한 정책)
+    // 타이베이가 china_control 아님 — 탈환 처리: 장기 점령 카운터만 리셋
+    // capitalRelocationAppliedAt은 절대 리셋 안 함 (페널티 1회 보장)
+    if (!isShortMode && state.persistent?.milestones?.taipeiFallsAt) {
       state.persistent.milestones.taipeiFallsAt = null;
     }
   }
