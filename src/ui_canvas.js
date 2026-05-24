@@ -82,11 +82,12 @@ export function drawGameCanvas(canvas, state, meta = {}) {
   drawStraitGrid(ctx, w, h);
   drawTaiwanMapImage(ctx, w, h);  // v0.5-a: 실제 전략맵 이미지 (로드 실패 시 fallback)
   drawRoutes(ctx, w, h);
-  drawChinaBlockadeFleet(ctx, w, h, state, meta);  // v0.5-b: 봉쇄 함대 토큰
+  drawChinaBlockadeFleet(ctx, w, h, state, meta);  // v0.5-b: 봉쇄 함대 토큰 + v0.5-c sweep
   drawOperationalMotion(ctx, w, h, state, meta);
   drawAlliedIntervention(ctx, w, h, state, meta);
   drawTaiwanDefenseTokens(ctx, w, h, state, meta); // v0.5-b: 대만 방어진지 토큰
   drawProvinces(ctx, w, h, state, meta);
+  drawHitBursts(ctx, w, h, state, meta);           // v0.5-c: 타격 폭발 이펙트 (거점 위)
   drawTopHud(ctx, w, h, state, meta);
 }
 
@@ -143,12 +144,18 @@ let _mapImageLoading = false;
 let _mapImageFailed = false;
 
 // v0.5-b: 토큰 이미지 캐시. key → { img, loading, failed }
+// v0.5-c: 이펙트 자산 추가 (missile/target/hit)
 const _tokenCache = {
   china_landing_craft:   { img: null, loading: false, failed: false, path: "./assets/tokens/china_landing_craft.png" },
   china_blockade_fleet:  { img: null, loading: false, failed: false, path: "./assets/tokens/china_blockade_fleet.png" },
   us_carrier_group:      { img: null, loading: false, failed: false, path: "./assets/tokens/us_carrier_group.png" },
   japan_patrol_aircraft: { img: null, loading: false, failed: false, path: "./assets/tokens/japan_patrol_aircraft.png" },
-  taiwan_defense_emplacement: { img: null, loading: false, failed: false, path: "./assets/tokens/taiwan_defense_emplacement.png" }
+  taiwan_defense_emplacement: { img: null, loading: false, failed: false, path: "./assets/tokens/taiwan_defense_emplacement.png" },
+  // v0.5-c: 이펙트 시트에서 추출한 4개 자산
+  missile_red_trail:    { img: null, loading: false, failed: false, path: "./assets/effects/missile_red_trail.png" },
+  missile_blue_trail:   { img: null, loading: false, failed: false, path: "./assets/effects/missile_blue_trail.png" },
+  target_reticle:       { img: null, loading: false, failed: false, path: "./assets/effects/target_reticle.png" },
+  hit_burst:            { img: null, loading: false, failed: false, path: "./assets/effects/hit_burst.png" }
 };
 
 function ensureMapImageLoaded() {
@@ -378,9 +385,50 @@ function drawOperationalMotion(ctx, w, h, state, meta = {}) {
     }
     // v0.5-b: 실제 상륙정 PNG 토큰. 로드 안 되면 fallback drawShipIcon.
     // v0.5-b1: 크기 축소 48 → 36 (지도 위 전략 심볼 스케일)
+    // v0.5-c: 토큰 강조 — wake trail + pulsing glow ring (빨간 화살표보다 두드러지게)
     const tokenSize = 36 * craftSize;
+
+    // v0.5-c: 진행 방향 계산 (이전 위치 → 현재 위치 벡터)
+    // anchor 경유면 anchor가 출발점, 아니면 strait
+    const originX = anchor ? anchor.x * w : sx;
+    const originY = anchor ? anchor.y * h : sy;
+    const dxVec = tx - originX;
+    const dyVec = ty - originY;
+    const distVec = Math.sqrt(dxVec * dxVec + dyVec * dyVec) || 1;
+    const dirX = dxVec / distVec;
+    const dirY = dyVec / distVec;
+
+    // v0.5-c: wake trail — 토큰 뒤로 청록 발자취 (3개 잔상 + 페이드)
+    for (let i = 1; i <= 3; i++) {
+      const trailLen = tokenSize * 0.5 * i;
+      const wx = lx - dirX * trailLen;
+      const wy = ly - dirY * trailLen;
+      const wakeAlpha = 0.45 * (1 - i / 4);
+      ctx.save();
+      ctx.fillStyle = `rgba(180, 230, 255, ${wakeAlpha})`;
+      ctx.shadowColor = "rgba(180, 230, 255, 0.6)";
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.arc(wx, wy, tokenSize * 0.18 * (1 - i / 5), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // v0.5-c: pulsing glow ring (적성 빨간 후광) — 빨간 화살표보다 두드러지게
+    const pulseRing = (Date.now() % 1200) / 1200;
+    const ringAlpha = 0.45 + 0.30 * Math.sin(pulseRing * Math.PI * 2);
+    ctx.save();
+    ctx.strokeStyle = `rgba(255, 70, 80, ${ringAlpha})`;
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = "rgba(255, 60, 70, 0.7)";
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.arc(lx, ly, tokenSize * 0.62, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
     const tokenDrawn = drawTokenImage(ctx, "china_landing_craft", lx, ly, tokenSize, {
-      shadowColor: "rgba(255, 80, 80, 0.6)", shadowBlur: 14
+      shadowColor: "rgba(255, 80, 80, 0.7)", shadowBlur: 16
     });
     if (!tokenDrawn) {
       drawShipIcon(ctx, lx, ly, "#ff6b76", controlled ? "통제" : "상륙", craftSize);
@@ -567,6 +615,71 @@ function drawSupportNode(ctx, x, y, label, color) {
 }
 
 // =====================================================================
+// v0.5-c: 타격 폭발 이펙트
+// ---------------------------------------------------------------------
+// recentBattles에 있는 거점 위에 hit_burst.png를 페이드인-아웃으로 표시.
+// drawProvinces의 기존 빨간 pulse 링은 유지 (둘 다 보강).
+// =====================================================================
+function drawHitBursts(ctx, w, h, state, meta = {}) {
+  const recent = state.persistent?.recentBattles || [];
+  if (!recent.length) return;
+
+  // 페이드 사이클: 1.5초 주기로 0.4 → 1.0 → 0.4 알파
+  const cycle = (Date.now() % 1500) / 1500;
+  const burstAlpha = 0.55 + 0.35 * Math.sin(cycle * Math.PI * 2);
+  const burstScale = 1.0 + 0.15 * Math.sin(cycle * Math.PI * 2);
+
+  for (const id of recent) {
+    const pos = PROVINCE_LAYOUT[id];
+    if (!pos) continue;
+    const cx = pos.x * w;
+    const cy = pos.y * h;
+    const burstSize = 70 * burstScale;
+    drawTokenImage(ctx, "hit_burst", cx, cy, burstSize, {
+      alpha: burstAlpha,
+      shadowColor: "rgba(255, 140, 80, 0.7)",
+      shadowBlur: 16
+    });
+  }
+}
+
+// =====================================================================
+// v0.5-c: 봉쇄 함대 sweep arc (레이더 sweep 라인)
+// ---------------------------------------------------------------------
+// 봉쇄 함대 토큰 주변에 회전하는 청록 sweep 호선. 함대가 살아있다는 느낌.
+// 별도 함수로 분리 — drawChinaBlockadeFleet에서 토큰 그린 후 호출.
+// =====================================================================
+function drawBlockadeSweep(ctx, cx, cy, radius) {
+  const sweepT = (Date.now() % 3000) / 3000;  // 3초 1회전
+  const sweepAngle = sweepT * Math.PI * 2;
+  const sweepWidth = Math.PI / 6;  // 30도 부채꼴
+
+  ctx.save();
+  // 부채꼴 그라데이션 fill
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+  grad.addColorStop(0, "rgba(255, 180, 180, 0.0)");
+  grad.addColorStop(0.5, "rgba(255, 120, 130, 0.15)");
+  grad.addColorStop(1, "rgba(255, 80, 90, 0.35)");
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.arc(cx, cy, radius, sweepAngle - sweepWidth, sweepAngle);
+  ctx.closePath();
+  ctx.fill();
+
+  // sweep edge 라인
+  const ex = cx + Math.cos(sweepAngle) * radius;
+  const ey = cy + Math.sin(sweepAngle) * radius;
+  ctx.strokeStyle = "rgba(255, 100, 110, 0.75)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(ex, ey);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// =====================================================================
 // v0.5-b: 중국 봉쇄 함대 토큰
 // ---------------------------------------------------------------------
 // naval_blockade가 이번 턴 또는 최근 3턴 내 chinaAxis였으면 strait에 표시.
@@ -588,6 +701,10 @@ function drawChinaBlockadeFleet(ctx, w, h, state, meta = {}) {
 
   const pulseT = (Date.now() % 1800) / 1800;
   const pulseAlpha = 0.55 + 0.25 * Math.sin(pulseT * Math.PI * 2);
+
+  // v0.5-c: sweep arc (레이더) — 토큰 *밑에* 깔리도록 먼저 그림
+  const sweepRadius = 110;
+  drawBlockadeSweep(ctx, cx, cy, sweepRadius);
 
   // v0.5-b1: 크기 축소 110 → 80 (지도 위 전략 토큰 스케일)
   const tokenSize = 80;
@@ -647,6 +764,23 @@ function drawTaiwanDefenseTokens(ctx, w, h, state, meta = {}) {
     const cy = pos.y * h - pos.r - 6;
     // v0.5-b1: 크기 축소 — 36 → 28 (상황 발생 시 강조용)
     const tokenSize = underLanding ? 32 : 28;
+
+    // v0.5-c: 상륙 진행 중인 거점은 방어진지 주변에 녹색 pulse ring
+    if (underLanding) {
+      const pulseT = (Date.now() % 1100) / 1100;
+      const ringR = tokenSize * (0.55 + 0.20 * Math.sin(pulseT * Math.PI * 2));
+      const ringAlpha = 0.50 + 0.30 * Math.sin(pulseT * Math.PI * 2);
+      ctx.save();
+      ctx.strokeStyle = `rgba(120, 240, 150, ${ringAlpha})`;
+      ctx.lineWidth = 2;
+      ctx.shadowColor = "rgba(120, 240, 150, 0.6)";
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.arc(cx, cy, ringR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     drawTokenImage(ctx, "taiwan_defense_emplacement", cx, cy, tokenSize, {
       alpha: underLanding ? 1.0 : 0.85,
       shadowColor: underLanding ? "rgba(120, 220, 140, 0.7)" : "rgba(120, 220, 140, 0.4)",
