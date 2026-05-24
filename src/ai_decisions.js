@@ -44,6 +44,31 @@ export function chooseChinaCards(state, axisId, cardIndex) {
   const has = (id) => hand.some((c) => c.id === id);
   const wanted = [];
 
+  // v0.4.2-b2: ACT 3 우선순위 — 자원 소진/장기전 상태면 ACT 3 카드를 우선
+  const isAct3 = (state.persistent?.lastActId === "ACT_3") || (state.turn >= 45);
+  const lowSupply = (state.gauges.chinaSupply || 0) <= 30;
+  const lowTempo = (state.gauges.chinaTempo || 0) <= 20;
+  const highPP = (state.gauges.chinaPoliticalPressure || 0) >= 70;
+
+  if (isAct3) {
+    // 봉쇄 재정비: 봉쇄 축 + 보급 부족 시 강추천
+    if (axisId === "naval_blockade" && lowSupply && has("china_naval_blockade_refit")) {
+      wanted.push("china_naval_blockade_refit");
+    }
+    // 강경파 동원: 템포 소진 시 회복
+    if (lowTempo && has("china_hardliner_mobilization")) {
+      wanted.push("china_hardliner_mobilization");
+    }
+    // 제한전 유지: 정치 압박 높을 때 안정화
+    if (highPP && has("china_limited_war_maintenance")) {
+      wanted.push("china_limited_war_maintenance");
+    }
+    // 협상 우위 압박: 외교축 시 강추천
+    if (axisId === "diplomatic_pressure" && has("china_negotiation_leverage")) {
+      wanted.push("china_negotiation_leverage");
+    }
+  }
+
   if (axisId === "north_pressure") {
     if (has("china_blitz_order")) wanted.push("china_blitz_order");
     if (has("china_north_assault")) wanted.push("china_north_assault");
@@ -81,6 +106,32 @@ export function chooseTaiwanCards(state, axisId, focus, cardIndex) {
   const has = (id) => hand.some((c) => c.id === id);
   const wanted = [];
   const g = state.gauges;
+
+  // v0.4.2-b2: ACT 3 카드 우선순위 — 장기전 상태별 분기
+  const isAct3 = (state.persistent?.lastActId === "ACT_3") || (state.turn >= 45);
+  if (isAct3) {
+    // 보급 부족 → 해상 보급로 확보
+    if (g.taiwanSupply <= 50 && has("taiwan_supply_lane_secured")) {
+      wanted.push("taiwan_supply_lane_secured");
+    }
+    // 정부 기능 낮음 → 전시 정부 재정비
+    if (g.taiwanGovernment <= 60 && has("taiwan_wartime_govt_rebuild")) {
+      wanted.push("taiwan_wartime_govt_rebuild");
+    }
+    // 동맹 게이지 낮음 → 동맹 합동 정보망
+    if ((g.usIntervention || 0) < 90 && has("taiwan_allied_intel_network")) {
+      wanted.push("taiwan_allied_intel_network");
+    }
+    // 상륙 진척 있음 → 교두보 축소 작전
+    const stages2 = ["none", "sea_superiority", "landing_attempt", "beachhead", "inland_expansion"];
+    const anyBeachhead = Object.values(state.provinces || {}).some(p => {
+      const idx = stages2.indexOf(p.landingStage || "none");
+      return idx >= 3;
+    });
+    if (anyBeachhead && (g.taiwanReserveTroops || 0) >= 1 && has("taiwan_beachhead_reduction")) {
+      wanted.push("taiwan_beachhead_reduction");
+    }
+  }
 
   // v0.3.8c: 수도권 위기 감지
   const stages = ["none", "sea_superiority", "landing_attempt", "beachhead", "inland_expansion"];

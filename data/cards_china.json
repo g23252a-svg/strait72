@@ -204,5 +204,83 @@
     "cost": {
       "tempo": 1
     }
+  },
+  {
+    "id": "china_limited_war_maintenance",
+    "name": "제한전 유지",
+    "side": "china",
+    "type": "support",
+    "actFilter": [
+      "ACT_3"
+    ],
+    "description": "전면전을 축소하고 제한적 작전으로 정치 부담을 줄인다.",
+    "effects": {
+      "chinaPoliticalPressure": -5,
+      "usInterventionGain": -2
+    },
+    "cost": {
+      "tempo": 1
+    }
+  },
+  {
+    "id": "china_negotiation_leverage",
+    "name": "협상 우위 압박",
+    "side": "china",
+    "type": "diplomacy",
+    "actFilter": [
+      "ACT_3"
+    ],
+    "description": "국제 협상에서 우위를 노리고 국제 여론과 동맹 압박을 직접 깎는다. 실패 시 자체 정치 압박 가중.",
+    "effects": {
+      "internationalOpinion": -4,
+      "japanInterventionGain": -2
+    },
+    "riskOnFailure": {
+      "chinaPoliticalPressure": 4
+    },
+    "cost": {
+      "tempo": 1
+    }
+  },
+  {
+    "id": "china_naval_blockade_refit",
+    "name": "해상 봉쇄 재정비",
+    "side": "china",
+    "type": "support",
+    "actFilter": [
+      "ACT_3"
+    ],
+    "description": "해상 봉쇄 함대를 재정비하고 보급선을 정리한다. 다음 봉쇄 작전 효과 증가.",
+    "effects": {
+      "chinaSupply": 8
+    },
+    "combos": {
+      "withAxis": [
+        "naval_blockade"
+      ],
+      "bonusEffect": {
+        "attackBonus": 2
+      }
+    },
+    "cost": {
+      "tempo": 1
+    }
+  },
+  {
+    "id": "china_hardliner_mobilization",
+    "name": "강경파 동원",
+    "side": "china",
+    "type": "action_buff",
+    "actFilter": [
+      "ACT_3"
+    ],
+    "description": "강경파의 정치적 동원으로 작전 템포를 회복하지만 정치 압박이 크게 가중된다.",
+    "effects": {
+      "chinaTempo": 8,
+      "chinaPoliticalPressure": 6
+    },
+    "cost": {
+      "tempo": 0
+    }
   }
 ]

@@ -50,7 +50,12 @@ export const EFFECT_LABELS = {
   // 중첩 effect (ifXxxMisreads 내부 등)
   nextTurnAttackBonus:               { label: "다음 턴 공격력 보너스",  suffix: "" },
   nextTurnCounterAttackBonus:        { label: "다음 턴 반격 보너스",    suffix: "" },
-  taiwanReserveLockout:              { label: "대만 예비군 봉쇄",       suffix: "" }
+  taiwanReserveLockout:              { label: "대만 예비군 봉쇄",       suffix: "" },
+
+  // v0.4.2-b2: ACT 3 카드용 신규 키
+  chinaTempo:                        { label: "중국 작전 템포",         suffix: "" },
+  taiwanSupply:                      { label: "대만 보급력",            suffix: "" },
+  taiwanReserveTroops:               { label: "대만 예비 병력",         suffix: "" }
 };
 
 export const COST_LABELS = {

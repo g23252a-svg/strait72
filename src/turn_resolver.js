@@ -477,8 +477,14 @@ export function phaseStrategyDeclaration(state, decisions) {
   return state;
 }
 
-export function phaseCardPlacement(state, decisions, cardIndex) {
+export function phaseCardPlacement(state, decisions, cardIndex, campaign = null) {
   const placed = { china: [], taiwan: [] };
+  // v0.4.2-b2: 카드 ACT 필터 평가용 현재 ACT
+  // act_structure와 동일한 추론 로직: lastActId 우선, 없으면 turn 기반
+  const currentAct = state.persistent?.lastActId
+    || (campaign?.scenarioId === "short_72h" ? "ACT_1"
+        : (state.turn <= 12 ? "ACT_1" : state.turn <= 44 ? "ACT_2" : "ACT_3"));
+
   for (const side of ["china", "taiwan"]) {
     const wantPlay = decisions[`${side}Cards`] || [];
     const seenIds = new Set();
@@ -487,6 +493,14 @@ export function phaseCardPlacement(state, decisions, cardIndex) {
       if (!card) {
         state.log.push({ turn: state.turn, level: "warn", msg: `unknown card: ${cardId}` });
         continue;
+      }
+      // v0.4.2-b2: card.actFilter — 특정 ACT에서만 플레이 가능
+      // 데이터에 actFilter:["ACT_3"] 있는 카드는 ACT 1/2에서 차단
+      if (Array.isArray(card.actFilter) && card.actFilter.length > 0) {
+        if (!card.actFilter.includes(currentAct)) {
+          state.log.push({ turn: state.turn, level: "info", msg: `card act-filter blocked: ${cardId} (current ${currentAct})` });
+          continue;
+        }
       }
       // v0.4.2-b1.2: 같은 card id 한 턴 1번만 (allowDuplicate:true이면 예외)
       if (seenIds.has(cardId) && !card.allowDuplicate) {
@@ -908,7 +922,7 @@ export function runTurn(state, decisions, indices, campaign = null) {
 
   phaseInformation(state);
   phaseStrategyDeclaration(state, decisions);
-  phaseCardPlacement(state, decisions, cardIndex);
+  phaseCardPlacement(state, decisions, cardIndex, campaign);
   phaseOperationResolution(state, cardIndex, axisIndex);
   phaseDamagePolitical(state);
   phaseInternationalIntervention(state, events, "after_operation_resolution", campaign);

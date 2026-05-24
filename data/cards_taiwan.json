@@ -6,7 +6,10 @@
     "type": "counterplay",
     "description": "중국의 사이버·정보전 피해를 줄인다.",
     "trigger": {
-      "respondsTo": ["china_cyber_attack", "axis:information_warfare"]
+      "respondsTo": [
+        "china_cyber_attack",
+        "axis:information_warfare"
+      ]
     },
     "effects": {
       "taiwanCommandDamageReduction": 8,
@@ -27,7 +30,9 @@
       "usInterventionGain": 4,
       "japanInterventionGain": 2
     },
-    "canBeCounteredBy": ["china_diplomatic_pivot"],
+    "canBeCounteredBy": [
+      "china_diplomatic_pivot"
+    ],
     "cost": {
       "command": 1
     }
@@ -38,7 +43,11 @@
     "side": "taiwan",
     "type": "defense_buff",
     "description": "수도권/북부 거점의 방어 태세를 강화한다.",
-    "target": ["taipei", "keelung", "taoyuan"],
+    "target": [
+      "taipei",
+      "keelung",
+      "taoyuan"
+    ],
     "effects": {
       "defenseValueBonus": 2,
       "landingProgressRegressChance": 0.3
@@ -53,7 +62,10 @@
     "side": "taiwan",
     "type": "defense_buff",
     "description": "주요 항만의 상륙 저지력을 끌어올린다.",
-    "target": ["keelung", "kaohsiung"],
+    "target": [
+      "keelung",
+      "kaohsiung"
+    ],
     "effects": {
       "defenseValueBonus": 3,
       "landingProgressRegressChance": 0.4
@@ -89,7 +101,9 @@
       "japanInterventionGain": 5,
       "internationalOpinion": 4
     },
-    "canBeCounteredBy": ["china_diplomatic_pivot"],
+    "canBeCounteredBy": [
+      "china_diplomatic_pivot"
+    ],
     "cost": {
       "command": 1,
       "internationalRequest": 1
@@ -153,6 +167,74 @@
     },
     "cost": {
       "command": 2
+    }
+  },
+  {
+    "id": "taiwan_supply_lane_secured",
+    "name": "해상 보급로 확보",
+    "side": "taiwan",
+    "type": "support",
+    "actFilter": [
+      "ACT_3"
+    ],
+    "description": "동맹 호위 하에 동부 항만 보급로를 확보한다. 보급 크게 회복.",
+    "effects": {
+      "taiwanSupply": 12,
+      "japanInterventionGain": 3
+    },
+    "cost": {
+      "command": 1
+    }
+  },
+  {
+    "id": "taiwan_beachhead_reduction",
+    "name": "교두보 축소 작전",
+    "side": "taiwan",
+    "type": "attack",
+    "actFilter": [
+      "ACT_3"
+    ],
+    "description": "중국 교두보 진척을 한 단계 후퇴시키는 제한 반격. 예비대 소모.",
+    "effects": {
+      "landingProgressBonus": -1,
+      "taiwanReserveTroops": -1
+    },
+    "cost": {
+      "command": 1
+    }
+  },
+  {
+    "id": "taiwan_allied_intel_network",
+    "name": "동맹 합동 정보망",
+    "side": "taiwan",
+    "type": "support",
+    "actFilter": [
+      "ACT_3"
+    ],
+    "description": "미·일과의 합동 정보망 구축으로 중국 정보전 효과를 약화시키고 동맹 개입을 강화한다.",
+    "effects": {
+      "usInterventionGain": 3,
+      "taiwanCommandDamageReduction": 5
+    },
+    "cost": {
+      "command": 1
+    }
+  },
+  {
+    "id": "taiwan_wartime_govt_rebuild",
+    "name": "전시 정부 재정비",
+    "side": "taiwan",
+    "type": "support",
+    "actFilter": [
+      "ACT_3"
+    ],
+    "description": "전시 정부 기구를 재정비하여 정부 기능과 사기를 회복한다.",
+    "effects": {
+      "taiwanGovernment": 10,
+      "taiwanMorale": 4
+    },
+    "cost": {
+      "command": 1
     }
   }
 ]
