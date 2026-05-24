@@ -63,7 +63,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.4.0-d2.1";
+const EXPECTED_BUILD = "v0.4.0-d3";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -1618,6 +1618,22 @@ function showFinalResultModal() {
         <p>${escapeHtml(player.interpretation)}</p>
       </section>
 
+      <section class="final-debrief">
+        <h3>이번 캠페인의 이야기</h3>
+        <div class="debrief-block">
+          <div class="debrief-label">결정적 순간</div>
+          <div class="debrief-text">${escapeHtml(report.summary.debrief.decisiveMoment)}</div>
+        </div>
+        <div class="debrief-block">
+          <div class="debrief-label">국제 전환점</div>
+          <div class="debrief-text">${escapeHtml(report.summary.debrief.internationalTurning)}</div>
+        </div>
+        <div class="debrief-block">
+          <div class="debrief-label">캠페인 평가</div>
+          <div class="debrief-text">${escapeHtml(report.summary.debrief.campaignAssessment)}</div>
+        </div>
+      </section>
+
       <section class="final-breakdown">
         <h3>점수 요인</h3>
         <ul class="breakdown-list">
@@ -1707,6 +1723,37 @@ function showFinalResultModal() {
         margin-bottom: 18px;
       }
       .final-interp p { margin: 0; font-size: 14px; line-height: 1.6; color: rgba(234, 243, 255, .92); }
+      /* v0.4.0-d3: 디브리핑 섹션 */
+      .final-debrief {
+        background: rgba(124, 171, 220, .06);
+        border: 1px solid rgba(124, 171, 220, .2);
+        border-radius: 8px;
+        padding: 14px 16px;
+        margin-bottom: 18px;
+      }
+      .final-debrief h3 {
+        margin: 0 0 10px;
+        color: #ffd66b;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+      }
+      .debrief-block { margin-bottom: 10px; }
+      .debrief-block:last-child { margin-bottom: 0; }
+      .debrief-label {
+        font-size: 10px;
+        color: #7cabdc;
+        font-weight: 700;
+        letter-spacing: 1px;
+        margin-bottom: 2px;
+        text-transform: uppercase;
+      }
+      .debrief-text {
+        font-size: 13px;
+        line-height: 1.55;
+        color: rgba(234, 243, 255, .9);
+      }
       .final-modal section { margin-bottom: 18px; }
       .final-modal h3 { margin: 0 0 8px; font-size: 12px; color: #7cabdc; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; }
       .final-modal h4 { margin: 10px 0 4px; font-size: 11px; color: rgba(124, 171, 220, .8); font-weight: 700; letter-spacing: .5px; }

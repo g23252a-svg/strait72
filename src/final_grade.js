@@ -364,6 +364,13 @@ export function buildFinalReport(state, campaign, data = {}) {
     .filter(r => r.applyTiming === "persistent")
     .map(r => ({ id: r.id, name: r.name, side: r.side }));
 
+  // v0.4.0-d3: 핵심 사건 + 디브리핑 생성
+  const playerSide = campaign?.selectedSide === "both"
+    ? (taiwanResult.score >= chinaResult.score ? "taiwan" : "china")
+    : (campaign?.selectedSide || "taiwan");
+  const keyMoments = selectKeyMoments(state, data.events);
+  const debrief = generateDebrief(state, keyMoments, playerSide);
+
   return {
     outcome,
     title,
@@ -391,10 +398,234 @@ export function buildFinalReport(state, campaign, data = {}) {
       majorBattles,
       triggeredEvents,
       ownedRewards,
-      finalGauges: { ...state.gauges }
+      finalGauges: { ...state.gauges },
+      keyMoments,  // v0.4.0-d3
+      debrief      // v0.4.0-d3
     },
     campaignSide: campaign?.selectedSide || "both"
   };
+}
+
+// =====================================================================
+// v0.4.0-d3: 핵심 사건 선택 로직 + 디브리핑 생성
+// ---------------------------------------------------------------------
+// 사용자 명세:
+//   - 결정적 전투: 게임 종료 직전 (마지막 5턴 안)에서 큰 margin 1개
+//   - 가장 큰 margin 전투: 전체 게임 통틀어 절대 margin 최대 1개
+//   - 마지막 점령/방어 전투: 가장 최근의 결정적 결과 1개
+//   - 주요 국제 이벤트 1~2개 (점수 영향 큰 것)
+//   - 영향 큰 영구 보상 1~2개
+// =====================================================================
+
+// 이벤트 ID → 표시명 매핑 (data.events 없을 때 fallback)
+const EVENT_NAME_FALLBACK = {
+  global_us_carrier_movement: "미국 항모 이동 발표",
+  global_japan_security_council: "일본 안보회의 소집",
+  global_korea_nsc_rear_support: "한국 긴급 NSC",
+  global_un_emergency_session: "유엔 긴급회의",
+  global_market_crash: "세계 증시 폭락",
+  global_civilian_casualty_report: "민간 피해 보도",
+  global_bad_weather: "해협 기상 악화",
+  global_backchannel_ceasefire_offer: "비공개 휴전 타진"
+};
+
+function eventDisplayName(eventId, eventsData) {
+  if (Array.isArray(eventsData)) {
+    const e = eventsData.find(x => x.id === eventId);
+    if (e?.name) return e.name;
+  }
+  return EVENT_NAME_FALLBACK[eventId] || eventId;
+}
+
+// 한국어 조사 자동 처리 — 마지막 글자에 받침 있으면 첫 형태, 없으면 둘째
+//   josa(name, "이", "가") → "발표가" / "회의가" (자동 선택)
+//   josa(name, "과", "와") → "발표와" / "회의와"
+function hasJongseong(str) {
+  if (!str) return false;
+  const last = str.charCodeAt(str.length - 1);
+  if (last < 0xAC00 || last > 0xD7A3) return false; // 한글 음절 범위 밖
+  return (last - 0xAC00) % 28 !== 0; // 종성 코드가 0이 아니면 받침 있음
+}
+
+function josa(name, withJong, withoutJong) {
+  return name + (hasJongseong(name) ? withJong : withoutJong);
+}
+
+export function selectKeyMoments(state, eventsData = null) {
+  // 1) 모든 전투 추출 — log entry의 turn 보존
+  const allBattles = (state.log || [])
+    .filter(l => l.combatResults?.length)
+    .flatMap(l => l.combatResults.map(r => ({ ...r, turn: l.turn })));
+
+  const significantBattles = allBattles.filter(b => Math.abs(b.margin) >= 3);
+
+  // 결정적 전투: 게임 종료 직전 5턴 안에서 큰 margin
+  const lastTurn = state.turn;
+  const endgameWindow = significantBattles
+    .filter(b => b.turn != null && (lastTurn - b.turn) <= 5)
+    .sort((a, b) => Math.abs(b.margin) - Math.abs(a.margin));
+  const decisive = endgameWindow[0] || null;
+
+  // 가장 큰 margin 전투 (전체)
+  const biggest = significantBattles.length
+    ? [...significantBattles].sort((a, b) => Math.abs(b.margin) - Math.abs(a.margin))[0]
+    : null;
+  // decisive와 같으면 다음으로
+  const biggestUnique = (biggest && decisive && biggest.turn === decisive.turn && biggest.sourceName === decisive.sourceName)
+    ? (significantBattles.length > 1
+        ? [...significantBattles].sort((a, b) => Math.abs(b.margin) - Math.abs(a.margin))[1]
+        : null)
+    : biggest;
+
+  // 마지막 결정적 전투 — biggest/decisive와 다른 것
+  const sortedByTurnDesc = [...significantBattles].sort((a, b) => (b.turn || 0) - (a.turn || 0));
+  const usedTurns = new Set([decisive?.turn, biggestUnique?.turn].filter(t => t != null));
+  const lastDecisive = sortedByTurnDesc.find(b => !usedTurns.has(b.turn)) || null;
+
+  // 2) 주요 국제 이벤트 (트리거된 것들에서 상위 2개)
+  // 점수 영향 큰 순: us_carrier_movement, japan_security_council, korea_nsc, un_emergency 우선
+  const priority = [
+    "global_us_carrier_movement", "global_japan_security_council",
+    "global_korea_nsc_rear_support", "global_un_emergency_session",
+    "global_civilian_casualty_report", "global_market_crash",
+    "global_backchannel_ceasefire_offer", "global_bad_weather"
+  ];
+  const triggered = state.persistent?.triggeredOnce || [];
+  const significantEvents = priority
+    .filter(id => triggered.includes(id))
+    .slice(0, 2)
+    .map(id => ({ id, name: eventDisplayName(id, eventsData) }));
+
+  // 3) 영향 큰 영구 보상 — owned persistent rewards 중 b3 계열 또는 perTurnGain 위주
+  const persistRewards = (state.persistent?.rewards || [])
+    .filter(r => r.applyTiming === "persistent");
+  // 강도 추정: rangedAttackBonus / nightOpDefenseDebuff / reduction 계열 또는 perTurnGain
+  const impactfulRewards = persistRewards
+    .filter(r => {
+      const e = r.effects || {};
+      return e.rangedAttackBonus || e.nightOpDefenseDebuff
+        || e.taiwanSupplyDamageReduction || e.usJapanInterventionGainReduction
+        || e.perTurnGain || e.defenseValueBonus;
+    })
+    .slice(0, 2);
+
+  return {
+    decisive,
+    biggest: biggestUnique,
+    lastDecisive,
+    significantEvents,
+    impactfulRewards
+  };
+}
+
+// 디브리핑 텍스트 — 3 섹션 (결정적 순간 / 국제 전환점 / 캠페인 평가)
+export function generateDebrief(state, keyMoments, playerSide = "taiwan") {
+  const sections = {
+    decisiveMoment: null,
+    internationalTurning: null,
+    campaignAssessment: null
+  };
+
+  // ----- 결정적 순간 -----
+  const d = keyMoments.decisive;
+  const b = keyMoments.biggest;
+  const l = keyMoments.lastDecisive;
+  const decisiveParts = [];
+
+  if (d) {
+    const sign = d.margin >= 0 ? "+" : "";
+    const mark = d.success ? "성공" : "실패";
+    decisiveParts.push(`T${d.turn} ${d.sourceName} ${mark}: ${d.targetName} (차이 ${sign}${d.margin})`);
+  }
+  if (b && (!d || b.turn !== d.turn)) {
+    const sign = b.margin >= 0 ? "+" : "";
+    decisiveParts.push(`전체 게임 최대 격차는 T${b.turn} ${b.sourceName}: ${b.targetName} (차이 ${sign}${b.margin}).`);
+  }
+  if (l && (!d || l.turn !== d.turn) && (!b || l.turn !== b.turn)) {
+    const sign = l.margin >= 0 ? "+" : "";
+    decisiveParts.push(`이후 T${l.turn} ${l.sourceName} ${l.success ? "성공" : "실패"} (차이 ${sign}${l.margin}).`);
+  }
+  if (decisiveParts.length) {
+    sections.decisiveMoment = decisiveParts.join(" ");
+  } else {
+    sections.decisiveMoment = "결정적 전투 없이 양 진영의 자원 소모전이 이어졌습니다.";
+  }
+
+  // ----- 국제 전환점 -----
+  const ev = keyMoments.significantEvents;
+  if (ev.length === 0) {
+    sections.internationalTurning = "주요 국제 이벤트 없이 군사적 결착에 도달했습니다.";
+  } else if (ev.length === 1) {
+    sections.internationalTurning = `${josa(ev[0].name, "이", "가")} 캠페인 전개의 분수령이 되었습니다.`;
+  } else {
+    sections.internationalTurning = `${josa(ev[0].name, "과", "와")} ${josa(ev[1].name, "이", "가")} 동맹 개입 흐름을 결정했습니다.`;
+  }
+
+  // ----- 캠페인 평가 -----
+  const outcome = state.outcome;
+  const g = state.gauges || {};
+  const finalTurn = state.turn;
+  // 1턴 = 6시간 가정. finalTurn 6시간 단위.
+  // 예: turn 14 → 14×6 = 84시간 = 3.5일
+  const totalHours = finalTurn * 6;
+  const days = Math.floor(totalHours / 24);
+  const remHours = totalHours % 24;
+  const timeStr = remHours === 0 ? `${days}일` : `${days}.${Math.round(remHours / 24 * 10)}일`;
+
+  const rewards = keyMoments.impactfulRewards;
+  let rewardPhrase = "";
+  if (rewards.length === 1) {
+    rewardPhrase = ` 이번 캠페인에서 ${josa(rewards[0].name, "이", "가")} 핵심 영구 효과로 작용했습니다.`;
+  } else if (rewards.length >= 2) {
+    const lastName = rewards[rewards.length - 1].name;
+    const firstNames = rewards.slice(0, -1).map(r => r.name).join(", ");
+    rewardPhrase = ` 이번 캠페인에서 ${firstNames}, ${josa(lastName, "이", "가")} 핵심 영구 효과로 작용했습니다.`;
+  }
+
+  if (outcome === "taiwan_survival_win") {
+    sections.campaignAssessment = `대만은 ${describeTaiwanResilience(g)} ${timeStr} 생존에 성공했습니다.${rewardPhrase}`;
+  } else if (outcome === "taiwan_political_collapse_win") {
+    sections.campaignAssessment = `대만은 ${describeChinaCollapse(g)} 외교적 승리를 거두었습니다.${rewardPhrase}`;
+  } else if (outcome === "china_capital_win") {
+    sections.campaignAssessment = `중국은 ${timeStr} 만에 타이베이 점령에 성공했지만, ${describeChinaCost(g)}.${rewardPhrase}`;
+  } else if (outcome === "china_capital_pressure_win") {
+    sections.campaignAssessment = `중국은 수도권을 점진적으로 압박해 ${timeStr} 만에 승리를 굳혔지만, ${describeChinaCost(g)}.${rewardPhrase}`;
+  } else if (outcome === "china_blockade_win") {
+    sections.campaignAssessment = `중국은 대만의 보급과 사기를 동시에 무너뜨려 봉쇄 승리에 도달했습니다.${rewardPhrase}`;
+  } else if (outcome === "china_surrender_win") {
+    sections.campaignAssessment = `대만 정부가 무너지며 ${timeStr} 만에 항복 절차로 종결되었습니다.${rewardPhrase}`;
+  } else {
+    sections.campaignAssessment = `${timeStr} 동안 양측 결착 없이 캠페인이 종료되었습니다.${rewardPhrase}`;
+  }
+
+  return sections;
+}
+
+function describeTaiwanResilience(g) {
+  const parts = [];
+  if ((g.taiwanGovernment ?? 0) >= 70) parts.push("정부 기능을 유지하고");
+  if ((g.taiwanCommand ?? 0) >= 70) parts.push("지휘 체계를 안정시키면서");
+  if ((g.taiwanSupply ?? 0) >= 60) parts.push("보급선도 사수해");
+  if (parts.length === 0) return "방어선이 무너지는 와중에도";
+  return parts.join(" ") + ",";
+}
+
+function describeChinaCollapse(g) {
+  const parts = [];
+  if ((g.chinaPoliticalPressure ?? 0) >= 80) parts.push("중국 내부 정치 압박을 한계까지 누적시켜");
+  if ((g.internationalOpinion ?? 0) >= 70) parts.push("국제 여론을 전방위 동원해");
+  if (parts.length === 0) return "외교 전선에서 누적 압박을 통해";
+  return parts.join(" ");
+}
+
+function describeChinaCost(g) {
+  const issues = [];
+  if ((g.chinaPoliticalPressure ?? 0) >= 60) issues.push("자국 정치 압박이 누적되었습니다");
+  if ((g.chinaTempo ?? 0) < 40) issues.push("작전 템포가 소진되었습니다");
+  if ((g.chinaSupply ?? 0) < 40) issues.push("보급선이 한계점에 달했습니다");
+  if ((g.usIntervention ?? 0) >= 70) issues.push("미국 개입이 임박했습니다");
+  if (issues.length === 0) return "다음 국면의 부담은 적습니다";
+  return issues.join("; ");
 }
 
 function outcomeTitle(outcome) {
