@@ -63,7 +63,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.4.0-d3";
+const EXPECTED_BUILD = "v0.4.0-d4";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -1607,6 +1607,9 @@ function showFinalResultModal() {
           <div class="final-grade-label" style="color: ${playerColor};">${playerLabel} 캠페인 결과</div>
           <div class="final-grade-letter" style="color: ${playerGradeColor};">${player.grade}</div>
           <div class="final-grade-score">${player.score} / 100</div>
+          ${player.naturalGrade && player.naturalGrade !== player.grade
+            ? `<div class="final-grade-cap-note">점수상 ${player.naturalGrade}이지만 전황상 ${player.grade} 상한</div>`
+            : ""}
         </div>
         <div class="final-opponent-box">
           <div class="final-opponent-label" style="color: ${oppColor};">${oppLabel} 측 평가</div>
@@ -1704,6 +1707,12 @@ function showFinalResultModal() {
       .final-grade-label { font-size: 11px; letter-spacing: 1.5px; font-weight: 700; margin-bottom: 8px; }
       .final-grade-letter { font-size: 76px; font-weight: 900; line-height: 1; letter-spacing: 2px; text-shadow: 0 4px 16px rgba(0,0,0,.5); }
       .final-grade-score { margin-top: 8px; font-size: 18px; font-weight: 700; color: #eaf3ff; }
+      .final-grade-cap-note {
+        margin-top: 8px;
+        font-size: 11px;
+        color: rgba(255, 214, 107, .75);
+        font-style: italic;
+      }
       .final-opponent-box {
         flex: 1;
         background: rgba(124, 171, 220, .06);

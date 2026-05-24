@@ -89,6 +89,34 @@ export function calculateFinalScore(state, side) {
       components.push({ label: `점령지 손실 (${lost}곳)`, delta: lossP });
     }
 
+    // v0.4.0-d4: 수도권 압박 페널티 (타이베이 + 지룽 별도)
+    const territorial = analyzeTerritorialState(state);
+    let capitalPenalty = 0;
+    let capitalLabel = null;
+    if (territorial.taipeiRisk === "beachhead") {
+      capitalPenalty = -18;
+      capitalLabel = "타이베이 해안교두보 점령";
+    } else if (territorial.taipeiRisk === "breach") {
+      capitalPenalty = -12;
+      capitalLabel = "타이베이 해안 돌파";
+    } else if (territorial.taipeiRisk === "contested") {
+      capitalPenalty = -8;
+      capitalLabel = "타이베이 전투 중";
+    }
+    if (capitalPenalty !== 0) {
+      score += capitalPenalty;
+      components.push({ label: capitalLabel, delta: capitalPenalty });
+    }
+    // 지룽 (수도 인접 항만)
+    if (territorial.keelungStage === "china_control") {
+      score -= 8;
+      components.push({ label: "지룽 상실", delta: -8 });
+    } else if (territorial.keelungStage === "contested" ||
+               (state.provinces?.keelung?.landingStage && state.provinces.keelung.landingStage !== "none")) {
+      score -= 4;
+      components.push({ label: "지룽 전투 중", delta: -4 });
+    }
+
     // 종료 시점 보너스 (오래 버틴 만큼)
     if (outcome === "taiwan_survival_win") {
       components.push({ label: "30턴 완주", delta: 5 });
@@ -192,12 +220,44 @@ export function gradeFromScore(score) {
 }
 
 // =====================================================================
-// generateFinalInterpretation — outcome + grade 따른 한 줄 해설
+// generateFinalInterpretation — outcome + grade + 영토 상태 따른 해설
+// d4: state/grade 받아서 "방어선이 거의 흔들리지 않았다" 같은 잘못된 해설 차단
 // =====================================================================
-export function generateFinalInterpretation(outcome, score, side) {
-  const grade = gradeFromScore(score);
+export function generateFinalInterpretation(outcome, score, side, state = null, gradeOverride = null) {
+  const grade = gradeOverride || gradeFromScore(score);
+
+  // d4: taiwan_survival_win에서 영토 상태에 따라 더 정확한 해설
+  if (outcome === "taiwan_survival_win" && side === "taiwan" && state) {
+    const t = analyzeTerritorialState(state);
+    if (grade === "S") {
+      // S 하드 조건 통과: 거의 무손실
+      return "방어선이 거의 흔들리지 않은 채 72시간을 버텨냈습니다. 동맹 개입 유도가 거의 완벽했습니다.";
+    }
+    if (grade === "A") {
+      if (t.lostCount === 0) {
+        return "방어선은 흔들렸지만 영토 손실 없이 동맹 개입을 끌어내며 생존에 성공했습니다.";
+      } else if (t.lostCount === 1) {
+        return `${t.lostNames[0] || "1개 지역"} 상실이라는 대가를 치렀지만, 수도권을 지키고 동맹 개입을 끌어내며 생존에 성공했습니다.`;
+      } else {
+        return `${t.lostCount}곳의 영토를 상실했지만 정부 기능과 지휘 체계를 끝까지 유지하며 생존에 성공했습니다.`;
+      }
+    }
+    if (grade === "B") {
+      if (t.capitalAtRisk) {
+        return `대만은 ${t.lostCount}곳의 영토를 상실하고 수도권까지 압박받았지만, 정부 기능을 유지하며 동맹 개입 직전까지 버텨냈습니다. 다음 국면은 매우 불안정합니다.`;
+      }
+      return `대만은 남부 거점들을 상실했지만, 타이베이 정부 기능과 지휘 체계를 끝까지 유지하며 동맹 개입 이후 생존에 성공했습니다.`;
+    }
+    if (grade === "C") {
+      return `방어선 곳곳이 무너지고 수도권까지 압박받았지만 시간을 벌어 동맹 개입에 닿았습니다. 다음 국면은 매우 불안정합니다.`;
+    }
+    if (grade === "D") {
+      return "방어선이 와해된 채 시간만 흘렀습니다. 동맹 개입 도착 전 사실상 전투력이 소진되었습니다.";
+    }
+  }
+
+  // d4: china 승리에서도 영토 상태로 분기 가능 (간단히 grade 기반)
   const m = INTERPRETATION_MATRIX[outcome]?.[side] || {};
-  // 등급별 메시지 매칭 (없으면 가장 가까운 매칭)
   return m[grade] || m.B || `${outcome} / ${grade} (${score}점)`;
 }
 
@@ -307,6 +367,97 @@ function countOccupiedProvinces(state) {
 }
 
 // =====================================================================
+// v0.4.0-d4: 영토 상태 분석 — 등급 cap / 페널티 / 해설 조건의 공통 근거
+// ---------------------------------------------------------------------
+// 반환:
+//   - lostCount: china_control 점령지 수
+//   - taipei: { stage, landingStage } — 수도 상태
+//   - capitalAtRisk: 타이베이가 contested/beachhead/coastal_breach
+//   - capitalLost: 타이베이 china_control
+// =====================================================================
+export function analyzeTerritorialState(state) {
+  const provs = state.provinces || {};
+  const occupiable = Object.values(provs).filter(isOccupiable);
+
+  const lost = occupiable.filter(p => p.controlStage === "china_control");
+  const taipei = provs.taipei || {};
+  const taipeiStage = taipei.controlStage || "stable_defense";
+  const taipeiLanding = taipei.landingStage || "none";
+
+  // 타이베이 위험도 단계
+  let taipeiRisk = "stable"; // stable | contested | breach | beachhead | lost
+  if (taipeiStage === "china_control") taipeiRisk = "lost";
+  else if (taipeiLanding === "beachhead") taipeiRisk = "beachhead";
+  else if (taipeiLanding === "coastal_breach") taipeiRisk = "breach";
+  else if (taipeiStage === "contested" || (taipeiLanding && taipeiLanding !== "none")) taipeiRisk = "contested";
+
+  return {
+    lostCount: lost.length,
+    lostNames: lost.map(p => p.name || p.id),
+    capitalLost: taipeiRisk === "lost",
+    capitalAtRisk: ["contested", "breach", "beachhead"].includes(taipeiRisk),
+    taipeiRisk,
+    keelungStage: (provs.keelung?.controlStage) || "stable_defense"
+  };
+}
+
+// =====================================================================
+// v0.4.0-d4: 등급 cap 결정
+// ---------------------------------------------------------------------
+// 사용자 명세:
+//   - 점령지 0~1: S 가능
+//   - 점령지 2: 최대 A
+//   - 점령지 3+: 최대 B
+//   - 타이베이 contested/breach/beachhead: 최대 "B+" (= 우리 등급 체계에선 B)
+//   - 타이베이 china_control: 최대 D (사실상 패배)
+//   - 추가 S 하드조건 (taiwan side, 생존 승리): 정부70+ / us100 / japan60+
+// =====================================================================
+const GRADE_ORDER = ["D", "C", "B", "A", "S"]; // 등급 강도 순
+
+function maxGradeOf(a, b) {
+  return GRADE_ORDER.indexOf(a) >= GRADE_ORDER.indexOf(b) ? b : a; // 더 낮은 쪽 (cap 적용)
+}
+
+export function determineGradeCap(state, side) {
+  const t = analyzeTerritorialState(state);
+  let cap = "S";
+
+  if (side === "taiwan") {
+    // 영토 상실 cap
+    if (t.lostCount >= 3) cap = maxGradeOf(cap, "B");
+    else if (t.lostCount === 2) cap = maxGradeOf(cap, "A");
+    // 수도 상태 cap
+    if (t.capitalAtRisk) cap = maxGradeOf(cap, "B");
+    if (t.capitalLost) cap = maxGradeOf(cap, "D");
+
+    // S 하드 조건 (생존 승리 + 위 조건들)
+    const outcome = state.outcome;
+    const g = state.gauges || {};
+    if (outcome === "taiwan_survival_win") {
+      const sQualified =
+        t.lostCount <= 1 &&
+        !t.capitalAtRisk && !t.capitalLost &&
+        (g.taiwanGovernment ?? 0) >= 70 &&
+        (g.usIntervention ?? 0) >= 100 &&
+        (g.japanIntervention ?? 0) >= 60;
+      if (!sQualified) cap = maxGradeOf(cap, "A");
+    }
+  } else {
+    // 중국: 패배 시 D cap, 그 외엔 S 가능
+    if (state.outcome?.startsWith("taiwan_")) cap = maxGradeOf(cap, "C");
+  }
+
+  return cap;
+}
+
+// 등급 cap을 적용해 등급 결정 — 점수 자체는 유지, 등급만 낮춤
+export function gradeWithCap(score, cap) {
+  const natural = gradeFromScore(score);
+  // cap이 natural보다 낮으면 cap, 아니면 natural
+  return GRADE_ORDER.indexOf(natural) <= GRADE_ORDER.indexOf(cap) ? natural : cap;
+}
+
+// =====================================================================
 // buildFinalReport — outcome 시 호출되는 통합 보고서
 // ---------------------------------------------------------------------
 //   - score/grade per side
@@ -320,13 +471,18 @@ export function buildFinalReport(state, campaign, data = {}) {
   const taiwanResult = calculateFinalScore(state, "taiwan");
   const chinaResult = calculateFinalScore(state, "china");
 
-  const taiwanGrade = gradeFromScore(taiwanResult.score);
-  const chinaGrade = gradeFromScore(chinaResult.score);
+  // v0.4.0-d4: 등급 cap 결정 — 영토 상실/수도권 압박 시 자연 등급보다 낮춤
+  const taiwanCap = determineGradeCap(state, "taiwan");
+  const chinaCap = determineGradeCap(state, "china");
+  const taiwanGrade = gradeWithCap(taiwanResult.score, taiwanCap);
+  const chinaGrade = gradeWithCap(chinaResult.score, chinaCap);
+  const taiwanNaturalGrade = gradeFromScore(taiwanResult.score);
+  const chinaNaturalGrade = gradeFromScore(chinaResult.score);
 
-  // 진영별 해설 (양쪽 모드면 양쪽)
+  // 진영별 해설 (양쪽 모드면 양쪽) — d4: cap 적용된 등급으로 해설
   const interpretations = {
-    taiwan: generateFinalInterpretation(outcome, taiwanResult.score, "taiwan"),
-    china: generateFinalInterpretation(outcome, chinaResult.score, "china")
+    taiwan: generateFinalInterpretation(outcome, taiwanResult.score, "taiwan", state, taiwanGrade),
+    china: generateFinalInterpretation(outcome, chinaResult.score, "china", state, chinaGrade)
   };
 
   // 결과 제목
@@ -382,6 +538,8 @@ export function buildFinalReport(state, campaign, data = {}) {
       base: taiwanResult.base,
       components: taiwanResult.components,
       grade: taiwanGrade,
+      naturalGrade: taiwanNaturalGrade,
+      gradeCap: taiwanCap,
       interpretation: interpretations.taiwan
     },
     china: {
@@ -390,6 +548,8 @@ export function buildFinalReport(state, campaign, data = {}) {
       base: chinaResult.base,
       components: chinaResult.components,
       grade: chinaGrade,
+      naturalGrade: chinaNaturalGrade,
+      gradeCap: chinaCap,
       interpretation: interpretations.china
     },
     summary: {
@@ -583,7 +743,7 @@ export function generateDebrief(state, keyMoments, playerSide = "taiwan") {
   }
 
   if (outcome === "taiwan_survival_win") {
-    sections.campaignAssessment = `대만은 ${describeTaiwanResilience(g)} ${timeStr} 생존에 성공했습니다.${rewardPhrase}`;
+    sections.campaignAssessment = `대만은 ${describeTaiwanResilience(g, state)} ${timeStr} 생존에 성공했습니다.${rewardPhrase}`;
   } else if (outcome === "taiwan_political_collapse_win") {
     sections.campaignAssessment = `대만은 ${describeChinaCollapse(g)} 외교적 승리를 거두었습니다.${rewardPhrase}`;
   } else if (outcome === "china_capital_win") {
@@ -601,11 +761,35 @@ export function generateDebrief(state, keyMoments, playerSide = "taiwan") {
   return sections;
 }
 
-function describeTaiwanResilience(g) {
+function describeTaiwanResilience(g, state = null) {
   const parts = [];
   if ((g.taiwanGovernment ?? 0) >= 70) parts.push("정부 기능을 유지하고");
   if ((g.taiwanCommand ?? 0) >= 70) parts.push("지휘 체계를 안정시키면서");
   if ((g.taiwanSupply ?? 0) >= 60) parts.push("보급선도 사수해");
+
+  // d4: 영토 상실/수도권 압박 사실 반영
+  if (state) {
+    const t = analyzeTerritorialState(state);
+    if (t.capitalAtRisk) {
+      // 수도권 압박 받았으면 무조건 그 사실 먼저
+      const prefix = t.lostCount > 0
+        ? `${t.lostCount}곳의 영토를 잃고 수도권까지 압박받았지만,`
+        : `수도권이 압박받는 상황에서도`;
+      if (parts.length === 0) return prefix + " 방어선을 끝까지 유지해";
+      return prefix + " " + parts.join(" ") + ",";
+    }
+    if (t.lostCount >= 2) {
+      const prefix = `남부 ${t.lostCount}곳을 상실했지만,`;
+      if (parts.length === 0) return prefix + " 수도권 방어선을 유지해";
+      return prefix + " " + parts.join(" ") + ",";
+    }
+    if (t.lostCount === 1) {
+      const prefix = `${t.lostNames[0] || "1개 거점"} 상실이라는 대가를 치렀지만,`;
+      if (parts.length === 0) return prefix + " 나머지 방어선을 유지해";
+      return prefix + " " + parts.join(" ") + ",";
+    }
+  }
+
   if (parts.length === 0) return "방어선이 무너지는 와중에도";
   return parts.join(" ") + ",";
 }
