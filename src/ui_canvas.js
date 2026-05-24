@@ -7,6 +7,7 @@
 
 // v0.5-a: 전략맵 이미지 (taiwan_strategic_map.png) 기준 정규화 좌표
 // v0.5-a.1: 좌표를 지도의 실제 라벨 위치에 맞춰 미세조정 + r 축소 (라벨 가림 방지)
+// v0.5-a.2: 가오슝 좌표 미세 fit (라벨이 토큰 안에 들어오도록)
 // 이미지에 한글 라벨이 인쇄돼 있으므로 토큰은 라벨 옆 *작은 상태 인디케이터* 역할.
 export const PROVINCE_LAYOUT = Object.freeze({
   taipei:    { x: 0.600, y: 0.205, r: 22, label: "타이베이" },
@@ -14,9 +15,28 @@ export const PROVINCE_LAYOUT = Object.freeze({
   taoyuan:   { x: 0.540, y: 0.270, r: 20, label: "타오위안" },
   taichung:  { x: 0.485, y: 0.405, r: 22, label: "타이중" },
   tainan:    { x: 0.435, y: 0.565, r: 20, label: "타이난" },
-  kaohsiung: { x: 0.480, y: 0.715, r: 24, label: "가오슝" },
+  kaohsiung: { x: 0.475, y: 0.730, r: 24, label: "가오슝" },
   hualien:   { x: 0.595, y: 0.560, r: 21, label: "화롄" },
   strait:    { x: 0.230, y: 0.460, r: 32, label: "대만 해협" }
+});
+
+// v0.5-a.2: 해상 우회 anchor — 북부 거점(지룽/타이베이)은 본토를 가로지르지 않고
+// 대만 북쪽 바다를 돌아서 진입해야 자연스럽다. 화살표/이동 경로용 mid-point.
+const SEA_ANCHORS = Object.freeze({
+  // 대만 북부 해상 — 지룽/타이베이로 진입할 때 경유
+  north: { x: 0.560, y: 0.090 },
+  // 대만 남부 해상 — strait → 남부 거점 사이 (베지에 control point 보조)
+  south: { x: 0.330, y: 0.700 },
+  // 대만 동부 해상 — 화롄 진입용 (보통 우회 불가)
+  east:  { x: 0.780, y: 0.450 }
+});
+
+// v0.5-a.2: 거점별 해상 진입 anchor 매핑. 정의되지 않은 거점은 strait 직접 사용.
+const PROVINCE_SEA_APPROACH = Object.freeze({
+  taipei:  "north",   // 대만 북쪽 바다 돌아서
+  keelung: "north",   // 동북 항구 — 북쪽 바다에서
+  hualien: "east"     // 동해안 — 동쪽 바다 (보통 도달 불가)
+  // 그 외 거점(타오위안/타이중/타이난/가오슝): 서해안에서 직접 — anchor 없음
 });
 
 const STAGE_LABELS = Object.freeze({
@@ -193,22 +213,43 @@ function drawTaiwanSilhouetteFallback(ctx, w, h) {
 }
 
 function drawRoutes(ctx, w, h) {
-  const routePairs = [
-    ["strait", "keelung"], ["strait", "taoyuan"], ["strait", "kaohsiung"],
-    ["strait", "tainan"], ["keelung", "taipei"], ["taoyuan", "taipei"],
-    ["taoyuan", "taichung"], ["tainan", "taichung"], ["kaohsiung", "tainan"]
+  // v0.5-a.2: 본토 가로지르는 라인 방지 — 북부 거점은 해상 anchor 경유
+  // 직선 라인 (서해안 직접 진입)
+  const directPairs = [
+    ["strait", "taoyuan"], ["strait", "taichung"], ["strait", "tainan"], ["strait", "kaohsiung"],
+    ["taoyuan", "taipei"], ["taoyuan", "taichung"], ["tainan", "taichung"], ["kaohsiung", "tainan"]
   ];
+  // 해상 anchor 경유 라인 (베지에) — 본토 우회
+  const anchorPairs = [
+    { from: "strait", to: "keelung", via: "north" },
+    { from: "strait", to: "taipei",  via: "north" }
+  ];
+
   ctx.save();
   ctx.strokeStyle = "rgba(190, 220, 255, .16)";
   ctx.lineWidth = 2;
   ctx.setLineDash([5, 8]);
-  for (const [a, b] of routePairs) {
+
+  // 직선
+  for (const [a, b] of directPairs) {
     const pa = PROVINCE_LAYOUT[a];
     const pb = PROVINCE_LAYOUT[b];
     if (!pa || !pb) continue;
     ctx.beginPath();
     ctx.moveTo(pa.x * w, pa.y * h);
     ctx.lineTo(pb.x * w, pb.y * h);
+    ctx.stroke();
+  }
+
+  // 베지에 우회
+  for (const { from, to, via } of anchorPairs) {
+    const pa = PROVINCE_LAYOUT[from];
+    const pb = PROVINCE_LAYOUT[to];
+    const anchor = SEA_ANCHORS[via];
+    if (!pa || !pb || !anchor) continue;
+    ctx.beginPath();
+    ctx.moveTo(pa.x * w, pa.y * h);
+    ctx.quadraticCurveTo(anchor.x * w, anchor.y * h, pb.x * w, pb.y * h);
     ctx.stroke();
   }
   ctx.restore();
@@ -249,9 +290,24 @@ function drawOperationalMotion(ctx, w, h, state, meta = {}) {
     const sy = strait.y * h;
     const tx = pos.x * w;
     const ty = pos.y * h;
+
+    // v0.5-a.2: 북부 거점(지룽/타이베이)은 본토 가로지르지 않고 북쪽 해상 anchor 경유
+    const approachKey = PROVINCE_SEA_APPROACH[id];
+    const anchor = approachKey ? SEA_ANCHORS[approachKey] : null;
     ctx.beginPath();
     ctx.moveTo(sx, sy);
-    ctx.bezierCurveTo((sx + tx) / 2 - 70, (sy + ty) / 2, (sx + tx) / 2, (sy + ty) / 2 + 40, tx, ty);
+    if (anchor) {
+      // strait → north_sea_anchor → 거점 (이중 베지에)
+      const ax = anchor.x * w;
+      const ay = anchor.y * h;
+      // strait → anchor 곡선 (북상)
+      ctx.quadraticCurveTo((sx + ax) / 2 - 30, sy - 80, ax, ay);
+      // anchor → 거점 곡선 (남하/동진)
+      ctx.quadraticCurveTo((ax + tx) / 2, (ay + ty) / 2 - 20, tx, ty);
+    } else {
+      // 서해안 직접 진입 (기존 베지에)
+      ctx.bezierCurveTo((sx + tx) / 2 - 70, (sy + ty) / 2, (sx + tx) / 2, (sy + ty) / 2 + 40, tx, ty);
+    }
     ctx.stroke();
 
     // v0.3.10: stage별 상륙정 사이즈
@@ -260,8 +316,17 @@ function drawOperationalMotion(ctx, w, h, state, meta = {}) {
     else if (stage === "beachhead") craftSize = 1.2;
     else if (stage === "inland_expansion" || controlled) craftSize = 1.35;
 
-    const lx = sx + (tx - sx) * (0.35 + 0.35 * t);
-    const ly = sy + (ty - sy) * (0.35 + 0.35 * t);
+    // v0.5-a.2: 상륙정 위치 — anchor 경유면 anchor → 거점 사이에 배치
+    let lx, ly;
+    if (anchor) {
+      const ax = anchor.x * w;
+      const ay = anchor.y * h;
+      lx = ax + (tx - ax) * (0.30 + 0.35 * t);
+      ly = ay + (ty - ay) * (0.30 + 0.35 * t);
+    } else {
+      lx = sx + (tx - sx) * (0.35 + 0.35 * t);
+      ly = sy + (ty - sy) * (0.35 + 0.35 * t);
+    }
     drawShipIcon(ctx, lx, ly, "#ff6b76", controlled ? "통제" : "상륙", craftSize);
     ctx.restore();
   }

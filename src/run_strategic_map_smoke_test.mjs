@@ -35,7 +35,7 @@ const expected = {
   taoyuan:   { x: 0.540, y: 0.270 },
   taichung:  { x: 0.485, y: 0.405 },
   tainan:    { x: 0.435, y: 0.565 },
-  kaohsiung: { x: 0.480, y: 0.715 },
+  kaohsiung: { x: 0.475, y: 0.730 },
   hualien:   { x: 0.595, y: 0.560 },
   strait:    { x: 0.230, y: 0.460 }
 };
