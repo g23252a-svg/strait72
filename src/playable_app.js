@@ -16,6 +16,11 @@ import { buildCardTooltipHTML } from "./card_tooltip.js";
 import { generateActObjectives, shouldShowActObjectives } from "./act_objectives.js";
 import { MISSIONS, listMissions, applyMissionToState } from "./mission_scenarios.js";
 import {
+  isTutorialCompleted, markTutorialCompleted, resetTutorial,
+  startTutorial, endTutorial, advanceTutorial, isTutorialActive,
+  TUTORIAL_STEPS
+} from "./tutorial.js";
+import {
   chooseChinaCards as aiChooseChinaCards,
   chooseTaiwanCards as aiChooseTaiwanCards,
   pickSelectedProvince as aiPickSelectedProvince,
@@ -66,7 +71,7 @@ window.addEventListener("DOMContentLoaded", init);
 
 // ---- 빌드 검증 ----
 // 압축 해제 누락, 브라우저 캐시, 잘못된 폴더 등으로 옛 빌드가 조용히 로드되는 사고 방지.
-const EXPECTED_BUILD = "v0.4.2-d1";
+const EXPECTED_BUILD = "v0.4.3";
 const EXPECTED_TOTAL_TURNS = 30;
 
 function runBuildSelfCheck() {
@@ -114,10 +119,14 @@ async function init() {
 
   // v0.4.0-a: 진영 선택 화면을 먼저 보여줌
   // v0.4.2-d1: missionId 옵션 추가
-  showSideSelectModal((selectedSide, difficulty, scenarioId, missionId) => {
+  // v0.4.3: tutorialMode 옵션 추가
+  showSideSelectModal((selectedSide, difficulty, scenarioId, missionId, tutorialMode) => {
     campaign = createCampaignState(selectedSide, difficulty, scenarioId);
     if (missionId) {
       campaign.missionId = missionId;
+    }
+    if (tutorialMode) {
+      campaign.tutorialMode = true;
     }
     saveLastChoice(selectedSide, difficulty, scenarioId);
     resetGame();
@@ -197,6 +206,20 @@ function showSideSelectModal(onConfirm) {
     `;
   }).join("");
 
+  // v0.4.3: 튜토리얼 카드 (5개 미션 위에 별도 표시)
+  const tutorialAlreadyDone = isTutorialCompleted();
+  const tutorialCard = `
+    <button class="mission-card tutorial-card" data-mission="__tutorial__">
+      <div class="mission-name">📘 튜토리얼${tutorialAlreadyDone ? " (재실행)" : ""}</div>
+      <div class="mission-desc">첫 플레이라면 여기서 시작하세요. 게이지/카드/지도/턴 진행/DAY 보상까지 9단계 안내 (~10분).</div>
+      <div class="mission-meta">
+        <span class="mission-side">🇹🇼 대만</span>
+        <span class="mission-base">베이스: 72시간</span>
+        <span class="mission-turns">12턴</span>
+      </div>
+    </button>
+  `;
+
   // v0.4.1.1: 빠른 시작은 scenarioId 저장 안 되어 있으면 short_72h 기본
   const quickScenarioName = SCENARIOS[last?.scenarioId]?.name || SCENARIOS.short_72h.name;
   const quickStartHtml = last ? `
@@ -237,7 +260,7 @@ function showSideSelectModal(onConfirm) {
       <!-- 미션 모드 패널 -->
       <div class="mode-panel" id="missionPanel" style="display:none">
         <p class="mission-hint">미션 선택 — 각 미션은 고정 시작 상태 + 목표가 정해져 있습니다</p>
-        <div class="mission-list" id="missionList">${missionCards}</div>
+        <div class="mission-list" id="missionList">${tutorialCard}${missionCards}</div>
       </div>
 
       <button id="startGameBtn" class="primary start-btn" disabled>시작</button>
@@ -465,6 +488,16 @@ function showSideSelectModal(onConfirm) {
         background: rgba(124, 171, 220, 0.1);
         border-radius: 4px;
       }
+      /* v0.4.3: 튜토리얼 카드 강조 */
+      .mission-card.tutorial-card {
+        grid-column: 1 / -1;
+        border-color: rgba(255, 214, 107, 0.5);
+        background: rgba(50, 42, 18, 0.35);
+      }
+      .mission-card.tutorial-card:hover {
+        border-color: #ffd66b;
+        background: rgba(50, 42, 18, 0.6);
+      }
     </style>
   `;
   document.body.appendChild(overlay);
@@ -546,11 +579,17 @@ function showSideSelectModal(onConfirm) {
       onConfirm(selectedSide, selectedDifficulty, selectedScenario, null);
     } else {
       if (!selectedMission) return;
+      // v0.4.3: 튜토리얼 카드 — first_72h 미션 + tutorialMode 플래그
+      if (selectedMission === "__tutorial__") {
+        overlay.remove();
+        onConfirm("taiwan", "normal", "short_72h", "first_72h", true);
+        return;
+      }
       const m = MISSIONS[selectedMission];
       if (!m) return;
       overlay.remove();
       // 미션은 권장 진영 + 베이스 시나리오 강제
-      onConfirm(m.recommendedSide, "normal", m.baseScenario, selectedMission);
+      onConfirm(m.recommendedSide, "normal", m.baseScenario, selectedMission, false);
     }
   });
 
@@ -612,6 +651,11 @@ function resetGame() {
   // v0.4.2-d1: 미션 모드면 미션 적용 (initial state override)
   if (campaign?.missionId && MISSIONS[campaign.missionId]) {
     applyMissionToState(state, MISSIONS[campaign.missionId]);
+  }
+
+  // v0.4.3: 튜토리얼 모드면 튜토리얼 시작 (state.mission은 이미 위에서 설정됨)
+  if (campaign?.tutorialMode) {
+    startTutorial();
   }
 
   // v0.4.0-d2: 재시작 시 final modal guard 리셋 + DAY pending 정리
@@ -742,9 +786,11 @@ function bindEvents() {
     if (!confirm("현재 판을 버리고 새 게임을 시작할까요?")) return;
     // v0.4.0-a: 진영 선택 다시
     // v0.4.2-d1: missionId 추가
-    showSideSelectModal((selectedSide, difficulty, scenarioId, missionId) => {
+    // v0.4.3: tutorialMode 추가
+    showSideSelectModal((selectedSide, difficulty, scenarioId, missionId, tutorialMode) => {
       campaign = createCampaignState(selectedSide, difficulty, scenarioId);
       if (missionId) campaign.missionId = missionId;
+      if (tutorialMode) campaign.tutorialMode = true;
       saveLastChoice(selectedSide, difficulty, scenarioId);
       resetGame();
       dom.runTurnBtn.disabled = false;
@@ -1057,7 +1103,12 @@ function runManualTurn() {
   if (!state.outcome && isDayEndTurn(justFinishedTurn)) {
     const dayN = dayNumberForTurn(justFinishedTurn);
     showDayEndModal(dayN);
+    // v0.4.3: DAY 모달이 떴음을 튜토리얼에 알림
+    if (isTutorialActive()) advanceTutorial("day_end");
   }
+
+  // v0.4.3: 매 턴 실행 후 튜토리얼에 알림
+  if (isTutorialActive()) advanceTutorial("turn_run");
 }
 
 // v0.4.0-d2 → d4.1 → v0.4.2-a.2: outcome 발생 시 떠 있는 모든 pending 모달 강제 제거
@@ -2161,9 +2212,10 @@ function showFinalResultModal() {
   // 진영 선택으로
   overlay.querySelector("#finalRestartNewBtn").addEventListener("click", () => {
     overlay.remove();
-    showSideSelectModal((selectedSide, difficulty, scenarioId, missionId) => {
+    showSideSelectModal((selectedSide, difficulty, scenarioId, missionId, tutorialMode) => {
       campaign = createCampaignState(selectedSide, difficulty, scenarioId);
       if (missionId) campaign.missionId = missionId;
+      if (tutorialMode) campaign.tutorialMode = true;
       saveLastChoice(selectedSide, difficulty, scenarioId);
       resetGame();
       dom.runTurnBtn.disabled = false;
