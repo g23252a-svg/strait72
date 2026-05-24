@@ -474,5 +474,199 @@
       "icon": "warning",
       "newsTicker": "중국 보급망 균열 보도"
     }
+  },
+  {
+    "id": "global_us_carrier_recon_pressure",
+    "name": "미 항모 정찰 압박",
+    "type": "random_recurring",
+    "timing": "after_operation_resolution",
+    "actFilter": [
+      "ACT_3"
+    ],
+    "description": "미 항모전단이 지속 정찰 압박을 가하며 중국 해상 보급선을 약화시킨다.",
+    "triggerWhen": {
+      "all": [
+        {
+          "metric": "usIntervention",
+          "gte": 70
+        },
+        {
+          "probability": 0.55
+        }
+      ],
+      "cooldownTurns": 5
+    },
+    "effects": {
+      "chinaSupply": -3,
+      "usInterventionGain": 1
+    },
+    "ui": {
+      "severity": "low",
+      "icon": "carrier",
+      "newsTicker": "미 항모전단 정찰 압박 지속"
+    }
+  },
+  {
+    "id": "global_china_limited_blockade_maintained",
+    "name": "중국 제한 봉쇄 유지",
+    "type": "random_recurring",
+    "timing": "after_operation_resolution",
+    "actFilter": [
+      "ACT_3"
+    ],
+    "description": "중국 해군이 대규모 작전을 줄이고 제한적 봉쇄를 유지하며 정치적 부담을 감수한다.",
+    "triggerWhen": {
+      "all": [
+        {
+          "metric": "chinaSupply",
+          "gte": 15
+        },
+        {
+          "metric": "chinaTempo",
+          "lte": 40
+        },
+        {
+          "probability": 0.5
+        }
+      ],
+      "cooldownTurns": 6
+    },
+    "effects": {
+      "taiwanSupply": -4,
+      "chinaPoliticalPressure": 2
+    },
+    "ui": {
+      "severity": "low",
+      "icon": "blockade",
+      "newsTicker": "중국 제한 봉쇄 작전 지속"
+    }
+  },
+  {
+    "id": "global_taiwan_resupply_attempt",
+    "name": "대만 해상 보급 재시도",
+    "type": "random_recurring",
+    "timing": "start_of_turn",
+    "actFilter": [
+      "ACT_3"
+    ],
+    "description": "동맹 호위 하에 대만 동부 항만으로 보급 재시도. 절반 성공.",
+    "triggerWhen": {
+      "all": [
+        {
+          "metric": "japanIntervention",
+          "gte": 50
+        },
+        {
+          "metric": "taiwanSupply",
+          "lte": 60
+        },
+        {
+          "probability": 0.5
+        }
+      ],
+      "cooldownTurns": 5
+    },
+    "effects": {
+      "taiwanSupply": 6,
+      "taiwanMorale": -2
+    },
+    "ui": {
+      "severity": "low",
+      "icon": "supply",
+      "newsTicker": "대만 해상 보급 재시도"
+    }
+  },
+  {
+    "id": "global_ceasefire_opinion_spread",
+    "name": "휴전 여론 확산",
+    "type": "random_recurring",
+    "timing": "start_of_turn",
+    "actFilter": [
+      "ACT_3"
+    ],
+    "description": "장기전 피로감으로 국제 사회의 휴전 여론이 확산된다.",
+    "triggerWhen": {
+      "all": [
+        {
+          "metric": "chinaPoliticalPressure",
+          "gte": 50
+        },
+        {
+          "probability": 0.45
+        }
+      ],
+      "cooldownTurns": 6
+    },
+    "effects": {
+      "chinaPoliticalPressure": -3,
+      "internationalOpinion": 2
+    },
+    "ui": {
+      "severity": "low",
+      "icon": "diplomacy",
+      "newsTicker": "국제 사회 휴전 여론 확산"
+    }
+  },
+  {
+    "id": "global_china_hardliner_reignite",
+    "name": "중국 강경파 재점화",
+    "type": "random_recurring",
+    "timing": "start_of_turn",
+    "actFilter": [
+      "ACT_3"
+    ],
+    "description": "중국 내 강경파가 휴전 분위기에 재반발, 일시적 작전 템포 회복.",
+    "triggerWhen": {
+      "all": [
+        {
+          "metric": "chinaTempo",
+          "lte": 25
+        },
+        {
+          "probability": 0.4
+        }
+      ],
+      "cooldownTurns": 7
+    },
+    "effects": {
+      "chinaTempo": 4,
+      "chinaPoliticalPressure": 4
+    },
+    "ui": {
+      "severity": "medium",
+      "icon": "warning",
+      "newsTicker": "중국 강경파 재반발 보도"
+    }
+  },
+  {
+    "id": "global_japan_naval_surveillance_rotation",
+    "name": "일본 해상 감시 교대",
+    "type": "random_recurring",
+    "timing": "after_operation_resolution",
+    "actFilter": [
+      "ACT_3"
+    ],
+    "description": "일본 해상자위대가 감시 함정 교대 운용으로 동중국해 압박을 지속한다.",
+    "triggerWhen": {
+      "all": [
+        {
+          "metric": "japanIntervention",
+          "gte": 60
+        },
+        {
+          "probability": 0.5
+        }
+      ],
+      "cooldownTurns": 5
+    },
+    "effects": {
+      "japanInterventionGain": 2,
+      "chinaSupply": -2
+    },
+    "ui": {
+      "severity": "low",
+      "icon": "radar",
+      "newsTicker": "일본 해상 감시 교대 운용"
+    }
   }
 ]
